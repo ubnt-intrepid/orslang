@@ -2,65 +2,83 @@ extern crate rustc_serialize;
 use rustc_serialize::json::Json;
 use std::collections::HashMap;
 
-fn eval(input: &[Json]) -> Json {
-  let mut env = std::default::Default::default();
-  do_run(input, &mut env)
-}
 
-fn substitute(expr: &Json, env: &mut HashMap<String, i64>) -> i64 {
-  match *expr {
-    Json::Array(ref arr) => do_run(arr.as_slice(), env).as_i64().unwrap(),
-    Json::I64(ref i) => *i,
-    Json::U64(ref i) => *i as i64,
-    _ => panic!("cannot substitute: {:?} (env: {:?})", expr, env)
-  }
-}
+struct Evaluator(HashMap<String, i64>);
 
-#[allow(unreachable_code)]
-fn do_run(input: &[Json], env: &mut HashMap<String, i64>) -> Json {
-  match input[0] {
-    Json::String(ref s) => {
-      match s.as_str() {
-        "step" => {
-          let ret: Vec<_> = (&input[1..]).iter().map(|line| do_run(line.as_array().unwrap().as_slice(), env)).collect();
-          ret.into_iter().last().unwrap()
+impl Evaluator {
+  fn new() -> Evaluator { Evaluator(HashMap::new()) }
+
+  fn eval(&mut self, input: &[Json]) -> Json {
+    match input[0] {
+      Json::String(ref s) => {
+        match s.as_str() {
+          "step" => self.eval_step(&input[1..]),
+          "until" => self.eval_until(&input[1..]),
+          "get" => self.eval_get(&input[1..]),
+          "set" => self.eval_set(&input[1..]),
+          "=" => self.eval_equals(&input[1..]),
+          "+" => self.eval_add(&input[1..]),
+          _ => panic!("invalid operator: {:?}", s)
         }
-        "until" => {
-          loop {
-            let c = do_run(input[1].as_array().unwrap().as_slice(), env);
-            if c.is_boolean() && c.as_boolean().unwrap() {
-              return Json::Null;
-            }
-            do_run(input[2].as_array().unwrap().as_slice(), env);
-          }
-          unreachable!()
-        }
-        "get" => {
-          let key = input[1].as_string().unwrap();
-          env.get(key).cloned().map(Json::I64).unwrap()
-        }
-        "set" => {
-          let key = input[1].as_string().unwrap();
-          let val = substitute(&input[2], env);
-          *env.entry(key.to_owned()).or_insert(0) = val;
-          Json::Null
-        }
-        "=" => {
-          let lhs = substitute(&input[1], env);
-          let rhs = substitute(&input[2], env);
-          Json::Boolean(lhs == rhs)
-        }
-        "+" => {
-          let lhs = substitute(&input[1], env);
-          let rhs = substitute(&input[2], env);
-          Json::I64(lhs + rhs)
-        }
-        _ => panic!("invalid operator: {:?}", s)
       }
+      _ => panic!("invalid token: {:?}", input[0])
     }
-    _ => panic!("invalid token: {:?}", input[0])
+  }
+
+  fn eval_step(&mut self, lines: &[Json]) -> Json {
+    let ret = self.eval(lines[0].as_array().unwrap().as_slice());
+    if lines.len() == 1 {
+      ret
+    } else {
+      self.eval_step(&lines[1..])
+    }
+  }
+
+  #[allow(unreachable_code)]
+  fn eval_until(&mut self, args: &[Json]) -> Json {
+    loop {
+      let c = self.eval(args[0].as_array().unwrap().as_slice());
+      if c.is_boolean() && c.as_boolean().unwrap() {
+        return Json::Null;
+      }
+      self.eval(args[1].as_array().unwrap().as_slice());
+    }
+  }
+
+  fn eval_get(&mut self, args: &[Json]) -> Json {
+    let key = args[0].as_string().unwrap();
+    self.0.get(key).cloned().map(Json::I64).unwrap()
+  }
+
+  fn eval_set(&mut self, args: &[Json]) -> Json {
+    let key = args[0].as_string().unwrap();
+    let val = self.substitute(&args[1]);
+    *self.0.entry(key.to_owned()).or_insert(0) = val;
+    Json::Null
+  }
+
+  fn eval_equals(&mut self, args: &[Json]) -> Json {
+    let lhs = self.substitute(&args[0]);
+    let rhs = self.substitute(&args[1]);
+    Json::Boolean(lhs == rhs)
+  }
+
+  fn eval_add(&mut self, args: &[Json]) -> Json {
+    let lhs = self.substitute(&args[0]);
+    let rhs = self.substitute(&args[1]);
+    Json::I64(lhs + rhs)
+  }
+
+  fn substitute(&mut self, expr: &Json) -> i64 {
+    match *expr {
+      Json::Array(ref arr) => self.eval(arr.as_slice()).as_i64().unwrap(),
+      Json::I64(ref i) => *i,
+      Json::U64(ref i) => *i as i64,
+      _ => panic!("cannot substitute: {:?} (env: {:?})", expr, self.0)
+    }
   }
 }
+
 
 fn main() {
   let source = r#"
@@ -75,6 +93,7 @@ fn main() {
   ["get", "sum"]
 ]
 "#;
+
   let input: Vec<Json> = Json::from_str(source).unwrap().as_array().unwrap().to_owned();
-  println!("{:?}", eval(input.as_slice()));
+  println!("{:?}", Evaluator::new().eval(input.as_slice()));
 }
