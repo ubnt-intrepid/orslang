@@ -9,16 +9,16 @@ struct Evaluator(HashMap<String, f64>);
 impl Evaluator {
   fn new() -> Evaluator { Evaluator(HashMap::new()) }
 
-  fn get(&self, key: &str) -> f64 { self.0.get(key).cloned().unwrap() }
+  fn get(&self, key: &str) -> f64 { *self.0.get(key).unwrap() }
 
-  fn set(&mut self, key: &str, val: f64) { *self.0.entry(key.to_owned()).or_insert(0.0) = val; }
+  fn set(&mut self, key: &str, val: f64) { self.0.insert(key.to_owned(), val); }
 
   fn substitute(&mut self, expr: &Json) -> f64 {
     match *expr {
       Json::Array(ref arr) => self.eval(arr.as_slice()).as_f64().unwrap(),
-      Json::F64(ref i) => *i,
-      Json::I64(ref i) => *i as f64,
-      Json::U64(ref i) => *i as f64,
+      Json::F64(i) => i,
+      Json::I64(i) => i as f64,
+      Json::U64(i) => i as f64,
       _ => panic!("cannot substitute: {:?} (env: {:?})", expr, self.0)
     }
   }
