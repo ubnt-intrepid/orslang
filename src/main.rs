@@ -28,7 +28,7 @@ impl Evaluator {
     let args = &input[1..];
 
     match token {
-      "step" => self.eval_step(args),
+      "step" => self.eval_step(args).unwrap(),
       "until" => self.eval_until(args),
 
       "get" => self.eval_get(args),
@@ -50,13 +50,12 @@ impl Evaluator {
     }
   }
 
-  fn eval_step(&mut self, lines: &[Json]) -> Json {
-    let ret = self.eval(lines[0].as_array().unwrap().as_slice());
-    if lines.len() == 1 {
-      ret
-    } else {
-      self.eval_step(&lines[1..])
+  fn eval_step(&mut self, lines: &[Json]) -> Result<Json, String> {
+    let mut ret = Ok(Json::Null);
+    for line in lines {
+      ret = Ok(self.eval(line.as_array().unwrap().as_slice()));
     }
+    ret
   }
 
   fn eval_until(&mut self, args: &[Json]) -> Json {
