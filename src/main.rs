@@ -15,7 +15,7 @@ impl Evaluator {
 
   fn substitute(&mut self, expr: &Json) -> f64 {
     match *expr {
-      Json::Array(ref arr) => self.eval(arr.as_slice()).as_f64().unwrap(),
+      Json::Array(_) => self.eval(expr).as_f64().unwrap(),
       Json::F64(i) => i,
       Json::I64(i) => i as f64,
       Json::U64(i) => i as f64,
@@ -23,7 +23,9 @@ impl Evaluator {
     }
   }
 
-  fn eval(&mut self, input: &[Json]) -> Json {
+  fn eval(&mut self, input: &Json) -> Json {
+    let input = input.as_array().expect(r"'input' should be an array").as_slice();
+
     let token = input[0].as_string().unwrap();
     let args = &input[1..];
 
@@ -53,18 +55,18 @@ impl Evaluator {
   fn eval_step(&mut self, lines: &[Json]) -> Result<Json, String> {
     let mut ret = Ok(Json::Null);
     for line in lines {
-      ret = Ok(self.eval(line.as_array().unwrap().as_slice()));
+      ret = Ok(self.eval(&line));
     }
     ret
   }
 
   fn eval_until(&mut self, args: &[Json]) -> Json {
     loop {
-      let c = self.eval(args[0].as_array().unwrap().as_slice());
+      let c = self.eval(&args[0]);
       if c.is_boolean() && c.as_boolean().unwrap() {
         return Json::Null;
       }
-      self.eval(args[1].as_array().unwrap().as_slice());
+      self.eval(&args[1]);
     }
   }
 
@@ -97,9 +99,6 @@ impl Evaluator {
   }
 }
 
-fn parse(source: &str) -> Vec<Json> { Json::from_str(source).unwrap().as_array().unwrap().to_owned() }
-
-
 fn main() {
   let source = r#"
 ["step",
@@ -113,9 +112,9 @@ fn main() {
   ["get", "sum"]
 ]
 "#;
-  let input = parse(source);
+  let input =Json::from_str(source).unwrap();
 
   let mut e = Evaluator::new();
 
-  println!("{:?}", e.eval(input.as_slice()));
+  println!("{:?}", e.eval(&input));
 }
