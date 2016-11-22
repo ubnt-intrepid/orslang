@@ -42,10 +42,10 @@ let source = """
 """
 
 [<EntryPoint>]
-let main _ = 
+let main _ =
     let parsed = JsonValue.Parse source
     let e = new Evaluator ()
-    match e.Evaluate(parsed) with
+    match e.Evaluate parsed with
     | Some value -> Console.WriteLine("result: {0}", value)
     | None       -> Console.WriteLine("failed to parse sources")
     0
