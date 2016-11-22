@@ -112,7 +112,7 @@ fn main() {
   ["get", "sum"]
 ]
 "#;
-  let input =Json::from_str(source).unwrap();
+  let input = Json::from_str(source).unwrap();
 
   let mut e = Evaluator::new();
 

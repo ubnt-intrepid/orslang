@@ -1,0 +1,7 @@
+S src
+S lib
+
+B _build/src
+B _build/lib
+
+PKG yojson

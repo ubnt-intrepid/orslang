@@ -1,0 +1,12 @@
+OASISFormat: 0.4
+Name:        orelang
+Version:     0.0.1
+Synopsis:    Orelang
+Authors:     Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>
+License:     MIT
+BuildTools:  ocamlbuild
+
+Executable "orelang"
+  Path:         src
+  MainIs:       main.ml
+  BuildDepends: yojson
