@@ -3,12 +3,41 @@ open System.Collections.Generic
 open System.Text.RegularExpressions
 open FSharp.Data
 
-module Orelang = 
-    type Expr = JsonValue
-    
+module Orelang =
+    type Expr =
+        | Nil
+        | Bool of bool
+        | Value of decimal
+        | String of string
+        | Command of string * Expr list
+
     let re_replace (p : string) (r : string) (i : string) : string = Regex.Replace(i, p, r)
-    
-    let ParseFromString(s : string) : Expr option = 
+
+    let rec unwrappedList<'T> (lst : 'T option list) : 'T list option =
+        match lst with
+        | (Some hd) :: tl -> unwrappedList tl |> Option.map (fun tl -> hd :: tl)
+        | None :: _ -> None
+        | [] -> Some []
+
+    let rec private exprFromJson json : Expr option =
+        match json with
+        | JsonValue.Record _ -> None
+        | JsonValue.Null -> Some Expr.Nil
+        | JsonValue.Boolean b -> Some(Expr.Bool b)
+        | JsonValue.Number n -> Some(Expr.Value n)
+        | JsonValue.Float f -> Some(Expr.Value(decimal f))
+        | JsonValue.String s -> Some(Expr.String s)
+        | JsonValue.Array a ->
+            a
+            |> Array.map exprFromJson
+            |> Array.toList
+            |> unwrappedList
+            |> Option.bind (fun lst ->
+                   match lst with
+                   | (Expr.String s) :: tl -> Some(Expr.Command(s, tl))
+                   | _ -> None)
+
+    let ParseFromString(s : string) : Expr option =
         s
         |> (re_replace ";.*" "")
         |> (re_replace @"\(\s*" "[")
@@ -20,75 +49,71 @@ module Orelang =
         |> (re_replace @"[+*=](?=[, \]])" "\"$0\"")
         |> (re_replace "[a-zA-Z_][a-zA-Z0-9_]*" "\"$0\"")
         |> JsonValue.Parse
-        |> Some
-    
-    type Engine() = 
+        |> exprFromJson
+
+    type Engine() =
         let mutable env = Dictionary<string, Expr>()
-        
-        member private this.getValue (k : string) = 
+
+        member private this.getValue (k : string) =
             match env.TryGetValue(k) with
             | (true, v) -> Some v
             | _ -> None
-        
-        member private this.setValue (k : string) (v : Expr) = 
+
+        member private this.setValue (k : string) (v : Expr) =
             if env.ContainsKey(k) then env.Remove(k) |> ignore
             env.Add(k, v)
-        
-        member private this.substitute (expr : Expr) = 
+
+        member private this.substitute (expr : Expr) : Expr option =
             match expr with
-            | Expr.Array arr -> 
+            | Expr.Command _ ->
                 match this.Evaluate expr with
-                | Some(Expr.Float v) -> Some(Expr.Float v)
-                | Some(Expr.Number v) -> Some(Expr.Float(double v))
+                | Some(Expr.Value v) -> Some(Expr.Value v)
                 | _ -> None
-            | Expr.Float v -> Some(Expr.Float v)
-            | Expr.Number v -> Some(Expr.Float(double v))
+            | Expr.Value v -> Some(Expr.Value v)
             | _ -> None
-        
-        member this.Evaluate(expr : Expr) = 
-            let arr = expr.AsArray()
-            let token = (Array.head arr).AsString()
-            let args = Array.tail arr
-            if args.Length = 0 then this.getValue token
-            else 
-                match token with
-                | "step" -> 
-                    let rec eval_step args = 
-                        let ret = this.Evaluate(Array.head args)
-                        match (Array.tail args) with
-                        | [||] -> ret
-                        | tl -> eval_step tl
-                    eval_step args
-                | "until" -> 
-                    let rec eval_until e0 e1 = 
-                        match this.Evaluate e0 with
-                        | Some(Expr.Boolean true) -> Some Expr.Null
-                        | _ -> 
-                            this.Evaluate e1 |> ignore
-                            eval_until e0 e1
-                    eval_until (Array.get args 0) (Array.get args 1)
-                | "set" -> 
-                    let k = (Array.get args 0).AsString()
-                    this.substitute (Array.get args 1) |> Option.map (fun v -> 
-                                                              this.setValue k v
-                                                              Expr.Null)
-                | "=" -> 
-                    let lhs = this.substitute (Array.get args 0)
-                    let rhs = this.substitute (Array.get args 1)
-                    match (lhs, rhs) with
-                    | (Some(Expr.Float l), Some(Expr.Float r)) -> 
-                        Some(Expr.Boolean(Math.Abs(l - r) < 1e-6))
-                    | _ -> None
-                | "+" -> 
-                    let lhs = this.substitute (Array.get args 0)
-                    let rhs = this.substitute (Array.get args 1)
-                    match (lhs, rhs) with
-                    | (Some(Expr.Float l), Some(Expr.Float r)) -> Some(Expr.Float(l + r))
-                    | _ -> None
-                | _ -> None
+
+        member this.Evaluate(expr : Expr) =
+            match expr with
+            | Expr.Command(symbol, []) -> this.getValue symbol
+            | Expr.Command("step", lines) -> this.evalStep lines
+            | Expr.Command("until", [ e0; e1 ]) -> this.evalUntil e0 e1
+            | Expr.Command("set", [ Expr.String k; v ]) ->
+                this.substitute v |> Option.map (fun v ->
+                                         this.setValue k v
+                                         Expr.Nil)
+            | Expr.Command("=", [ lhs; rhs ]) -> this.evalCmp (=) lhs rhs
+            | Expr.Command("+", [ lhs; rhs ]) -> this.evalBinOp (+) lhs rhs
+            | _ -> None
+
+        member private this.evalStep lines =
+            let rec eval_step lines =
+                let ret = this.Evaluate(List.head lines)
+                match (List.tail lines) with
+                | [] -> ret
+                | tl -> eval_step tl
+            eval_step lines
+
+        member private this.evalUntil pred expr =
+            let rec eval_until e0 e1 =
+                match this.Evaluate e0 with
+                | Some(Expr.Bool true) -> Some Expr.Nil
+                | _ ->
+                    this.Evaluate e1 |> ignore
+                    eval_until e0 e1
+            eval_until pred expr
+
+        member private this.evalCmp op lhs rhs =
+            match (this.substitute lhs, this.substitute rhs) with
+            | (Some(Expr.Value l), Some(Expr.Value r)) -> Some(Expr.Bool(op l r))
+            | _ -> None
+
+        member private this.evalBinOp op lhs rhs =
+            match (this.substitute lhs, this.substitute rhs) with
+            | (Some(Expr.Value l), Some(Expr.Value r)) -> Some(Expr.Value(op l r))
+            | _ -> None
 
 [<EntryPoint>]
-let main _ = 
+let main _ =
     let source = """
   (step
     (set i 10)
@@ -103,8 +128,9 @@ let main _ =
     let eng = new Orelang.Engine()
     match Orelang.ParseFromString source with
     | None -> Console.WriteLine("failed to parse sources")
-    | Some ast -> 
+    | Some ast ->
         match eng.Evaluate ast with
-        | Some value -> Console.WriteLine("computational result = {0}", value)
+        | Some(Orelang.Expr.Value v) -> Console.WriteLine("computational result = {0}", v)
+        | Some value -> Console.WriteLine("computation was finished but the result isn't available.")
         | None -> Console.WriteLine("failed to complete evaluation.")
     0
