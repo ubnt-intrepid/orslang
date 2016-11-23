@@ -33,9 +33,9 @@ module orelang =
       | _                   -> None
  
     member this.Evaluate (expr: Expr) =
-      let arr: Expr [] = expr.AsArray ()
-      let token: string = (Array.head arr).AsString ()
-      let args: Expr [] = Array.tail arr
+      let arr = expr.AsArray ()
+      let token = (Array.head arr).AsString ()
+      let args = Array.tail arr
       match token with
       | "step" ->
         let rec eval_step args =
@@ -44,35 +44,38 @@ module orelang =
           | [||]    -> ret
           | tl      -> eval_step tl
         eval_step args
+
       | "until" ->
         let rec eval_until e0 e1 =
           match this.Evaluate e0 with
-          | Some (JsonValue.Boolean true)   -> Some JsonValue.Null
-          | _ -> this.Evaluate e1 |> ignore; eval_until e0 e1
+          | Some (JsonValue.Boolean true) -> Some JsonValue.Null
+          | _ -> this.Evaluate e1 |> ignore
+                 eval_until e0 e1
         eval_until (Array.get args 0) (Array.get args 1)
+
       | "get" ->
         let k = (Array.get args 0).AsString ()
-        match this.getValue k with
-        | Some v    -> Some (JsonValue.Float v)
-        | None      -> None
+        (this.getValue k) |> Option.map (fun v -> JsonValue.Float v)
+
       | "set" ->
         let k = (Array.get args 0).AsString ()
-        let v = this.substitute (Array.get args 1)
-        match v with
-        | Some v    -> this.setValue k v; Some (JsonValue.Null)
-        | None      -> None
+        this.substitute (Array.get args 1)
+        |> Option.map (fun v -> this.setValue k v; JsonValue.Null)
+
       | "==" ->
         let lhs = this.substitute (Array.get args 0)
         let rhs = this.substitute (Array.get args 1)
         match (lhs, rhs) with
         | (Some l, Some r)  -> Some (JsonValue.Boolean (Math.Abs(l - r) < 1e-6))
         | _                 -> None
+
       | "+" ->
         let lhs = this.substitute (Array.get args 0)
         let rhs = this.substitute (Array.get args 1)
         match (lhs, rhs) with
         | (Some l, Some r)  -> Some (JsonValue.Float (l + r))
         | _                 -> None
+
       | _ -> None
 
 
