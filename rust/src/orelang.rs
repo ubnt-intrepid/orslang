@@ -1,21 +1,31 @@
+use std::collections::HashMap;
+use std::ops::Add;
 
 use rustc_serialize::json::Json;
-use std::collections::HashMap;
-
-use std::ops::{Add, Sub, Mul, Div};
 
 type Expr = Json;
 
+pub fn transpile_from_str(s: &str) -> Expr {
+  Json::from_str(s).unwrap()
+}
+
+
 pub struct Engine {
-  env: HashMap<String, f64>
+  env: HashMap<String, f64>,
 }
 
 impl Engine {
-  pub fn new() -> Engine { Engine { env: HashMap::new() } }
+  pub fn new() -> Engine {
+    Engine { env: HashMap::new() }
+  }
 
-  fn get(&self, key: &str) -> f64 { *self.env.get(key).unwrap() }
+  fn get(&self, key: &str) -> f64 {
+    *self.env.get(key).unwrap()
+  }
 
-  fn set(&mut self, key: &str, val: f64) { self.env.insert(key.to_owned(), val); }
+  fn set(&mut self, key: &str, val: f64) {
+    self.env.insert(key.to_owned(), val);
+  }
 
   fn substitute(&mut self, expr: &Json) -> f64 {
     match *expr {
@@ -23,7 +33,7 @@ impl Engine {
       Json::F64(i) => i,
       Json::I64(i) => i as f64,
       Json::U64(i) => i as f64,
-      _ => panic!("cannot substitute: {:?} (env: {:?})", expr, self.env)
+      _ => panic!("cannot substitute: {:?} (env: {:?})", expr, self.env),
     }
   }
 
@@ -36,23 +46,12 @@ impl Engine {
     match token {
       "step" => self.eval_step(args).unwrap(),
       "until" => self.eval_until(args),
-
       "get" => self.eval_get(args),
       "set" => self.eval_set(args),
-
       "==" => self.eval_cmp(args, |l, r| l == r),
-      "!=" => self.eval_cmp(args, |l, r| l != r),
-      ">" => self.eval_cmp(args, |l, r| l > r),
-      ">=" => self.eval_cmp(args, |l, r| l >= r),
-      "<" => self.eval_cmp(args, |l, r| l < r),
-      "<=" => self.eval_cmp(args, |l, r| l <= r),
-
       "+" => self.eval_binop(args, Add::add),
-      "-" => self.eval_binop(args, Sub::sub),
-      "*" => self.eval_binop(args, Mul::mul),
-      "/" => self.eval_binop(args, Div::div),
 
-      _ => panic!("invalid token: {:?}", token)
+      _ => panic!("invalid token: {:?}", token),
     }
   }
 
@@ -102,5 +101,3 @@ impl Engine {
     Json::F64(op(lhs, rhs))
   }
 }
-
-pub fn transpile_from_str(s: &str) -> Expr { Json::from_str(s).unwrap() }
