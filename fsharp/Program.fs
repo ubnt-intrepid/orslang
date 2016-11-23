@@ -11,15 +11,15 @@ module Orelang =
         | String of string
         | Command of string * Expr list
 
-    let re_replace (p : string) (r : string) (i : string) : string = Regex.Replace(i, p, r)
+    let re_replace (p : string) (r : string) (i : string) = Regex.Replace(i, p, r)
 
-    let rec unwrappedList<'T> (lst : 'T option list) : 'T list option =
+    let rec private unwrappedList lst =
         match lst with
         | (Some hd) :: tl -> unwrappedList tl |> Option.map (fun tl -> hd :: tl)
         | None :: _ -> None
         | [] -> Some []
 
-    let rec private exprFromJson json : Expr option =
+    let rec private exprFromJson json =
         match json with
         | JsonValue.Record _ -> None
         | JsonValue.Null -> Some Expr.Nil
@@ -54,16 +54,16 @@ module Orelang =
     type Engine() =
         let mutable env = Dictionary<string, Expr>()
 
-        member private this.getValue (k : string) =
+        member private this.getValue k =
             match env.TryGetValue(k) with
             | (true, v) -> Some v
             | _ -> None
 
-        member private this.setValue (k : string) (v : Expr) =
+        member private this.setValue k v =
             if env.ContainsKey(k) then env.Remove(k) |> ignore
             env.Add(k, v)
 
-        member private this.substitute (expr : Expr) : Expr option =
+        member private this.substitute expr =
             match expr with
             | Expr.Command _ ->
                 match this.Evaluate expr with
@@ -72,7 +72,7 @@ module Orelang =
             | Expr.Value v -> Some(Expr.Value v)
             | _ -> None
 
-        member this.Evaluate(expr : Expr) =
+        member this.Evaluate(expr : Expr) : Expr option =
             match expr with
             | Expr.Command(symbol, []) -> this.getValue symbol
             | Expr.Command("step", lines) -> this.evalStep lines
