@@ -11,7 +11,7 @@ module Orelang =
         | String of string
         | Command of string * Expr list
 
-    let re_replace (p : string) (r : string) (i : string) = Regex.Replace(i, p, r)
+    let ReReplace (p : string) (r : string) (i : string) = Regex.Replace(i, p, r)
 
     let rec private unwrappedList lst =
         match lst with
@@ -37,33 +37,34 @@ module Orelang =
                    | (Expr.String s) :: tl -> Some(Expr.Command(s, tl))
                    | _ -> None)
 
+    /// Parse a string to Expr.
     let ParseFromString(s : string) : Expr option =
         s
-        |> (re_replace ";.*" "")
-        |> (re_replace @"\(\s*" "[")
-        |> (re_replace @"\s*\)" "]")
-        |> (re_replace "\n" "")
-        |> (re_replace @"^\s+" "")
-        |> (re_replace @"\s+$" "")
-        |> (re_replace @"\s+" ", ")
-        |> (re_replace @"[+*=](?=[, \]])" "\"$0\"")
-        |> (re_replace "[a-zA-Z_][a-zA-Z0-9_]*" "\"$0\"")
+        |> (ReReplace ";.*" "")
+        |> (ReReplace @"\(\s*" "[")
+        |> (ReReplace @"\s*\)" "]")
+        |> (ReReplace "\n" "")
+        |> (ReReplace @"^\s+" "")
+        |> (ReReplace @"\s+$" "")
+        |> (ReReplace @"\s+" ", ")
+        |> (ReReplace @"[+*=](?=[, \]])" "\"$0\"")
+        |> (ReReplace "[a-zA-Z_][a-zA-Z0-9_]*" "\"$0\"")
         |> JsonValue.Parse
         |> exprFromJson
 
     type Engine() =
         let mutable env = Dictionary<string, Expr>()
 
-        member private this.getValue k =
+        member private this.GetValue k =
             match env.TryGetValue(k) with
             | (true, v) -> Some v
             | _ -> None
 
-        member private this.setValue k v =
+        member private this.SetValue k v =
             if env.ContainsKey(k) then env.Remove(k) |> ignore
             env.Add(k, v)
 
-        member private this.substitute expr =
+        member private this.Substitute expr =
             match expr with
             | Expr.Command _ ->
                 match this.Evaluate expr with
@@ -74,41 +75,41 @@ module Orelang =
 
         member this.Evaluate(expr : Expr) : Expr option =
             match expr with
-            | Expr.Command(symbol, []) -> this.getValue symbol
-            | Expr.Command("step", lines) -> this.evalStep lines
-            | Expr.Command("until", [ e0; e1 ]) -> this.evalUntil e0 e1
+            | Expr.Command(symbol, []) -> this.GetValue symbol
+            | Expr.Command("step", lines) -> this.EvalStep lines
+            | Expr.Command("until", [ e0; e1 ]) -> this.EvalUntil e0 e1
             | Expr.Command("set", [ Expr.String k; v ]) ->
-                this.substitute v |> Option.map (fun v ->
-                                         this.setValue k v
+                this.Substitute v |> Option.map (fun v ->
+                                         this.SetValue k v
                                          Expr.Nil)
-            | Expr.Command("=", [ lhs; rhs ]) -> this.evalCmp (=) lhs rhs
-            | Expr.Command("+", [ lhs; rhs ]) -> this.evalBinOp (+) lhs rhs
+            | Expr.Command("=", [ lhs; rhs ]) -> this.EvalCmp (=) lhs rhs
+            | Expr.Command("+", [ lhs; rhs ]) -> this.EvalBinOp (+) lhs rhs
             | _ -> None
 
-        member private this.evalStep lines =
-            let rec eval_step lines =
+        member private this.EvalStep lines =
+            let rec f lines =
                 let ret = this.Evaluate(List.head lines)
                 match (List.tail lines) with
                 | [] -> ret
-                | tl -> eval_step tl
-            eval_step lines
+                | tl -> f tl
+            f lines
 
-        member private this.evalUntil pred expr =
-            let rec eval_until e0 e1 =
+        member private this.EvalUntil pred expr =
+            let rec f e0 e1 =
                 match this.Evaluate e0 with
                 | Some(Expr.Bool true) -> Some Expr.Nil
                 | _ ->
                     this.Evaluate e1 |> ignore
-                    eval_until e0 e1
-            eval_until pred expr
+                    f e0 e1
+            f pred expr
 
-        member private this.evalCmp op lhs rhs =
-            match (this.substitute lhs, this.substitute rhs) with
+        member private this.EvalCmp op lhs rhs =
+            match (this.Substitute lhs, this.Substitute rhs) with
             | (Some(Expr.Value l), Some(Expr.Value r)) -> Some(Expr.Bool(op l r))
             | _ -> None
 
-        member private this.evalBinOp op lhs rhs =
-            match (this.substitute lhs, this.substitute rhs) with
+        member private this.EvalBinOp op lhs rhs =
+            match (this.Substitute lhs, this.Substitute rhs) with
             | (Some(Expr.Value l), Some(Expr.Value r)) -> Some(Expr.Value(op l r))
             | _ -> None
 
