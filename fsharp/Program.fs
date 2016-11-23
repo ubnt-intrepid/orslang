@@ -1,31 +1,79 @@
 ﻿open System
 open FSharp.Data
+open System.Collections.Generic
 
-type Dictionary<'K, 'V> = System.Collections.Generic.Dictionary<'K, 'V>
-type Expr = JsonValue
+module orelang =
+  type Expr = JsonValue
 
-type Evaluator () =
-  let mutable env = Dictionary<string, double>()
+  let transpile_from_string (s: string) =
+    JsonValue.Parse s
 
-  member private this.substitute (expr: Expr) =
-    None
+  type Engine () =
+    let mutable env = Dictionary<string, double>()
 
-  member private this.getVar (k: string) =
-    match env.TryGetValue(k) with
-    | (true, v) -> Some v
-    | _         -> None
+    member private this.getValue (k: string) =
+      match env.TryGetValue(k) with
+      | (true, v) -> Some v
+      | _         -> None
 
-  member private this.setVar (k: string) (v: double) =
-    if env.ContainsKey(k) then
-      env.Remove(k) |> ignore
-    env.Add(k, v)
+    member private this.setValue (k: string) (v: double) =
+      if env.ContainsKey(k) then
+        env.Remove(k) |> ignore
+      env.Add(k, v)
 
-  member this.Evaluate (expr: Expr) =
-    this.setVar "hoge" 10.0
-    this.getVar "hoge" |> Console.WriteLine
-    this.setVar "hoge" 20.0
-    this.getVar "hoge" |> Console.WriteLine
-    None
+    member private this.substitute (expr: Expr) =
+      match expr with
+      | JsonValue.Array arr ->
+        match this.Evaluate expr with
+        | Some (JsonValue.Float v)  -> Some v
+        | Some (JsonValue.Number v) -> Some (double v)
+        | _                         -> None
+      | JsonValue.Float v   -> Some v
+      | JsonValue.Number v  -> Some (double v)
+      | _                   -> None
+ 
+    member this.Evaluate (expr: Expr) =
+      let arr: Expr [] = expr.AsArray ()
+      let token: string = (Array.head arr).AsString ()
+      let args: Expr [] = Array.tail arr
+      match token with
+      | "step" ->
+        let rec eval_step args =
+          let ret = this.Evaluate (Array.head args)
+          match (Array.tail args) with
+          | [||]    -> ret
+          | tl      -> eval_step tl
+        eval_step args
+      | "until" ->
+        let rec eval_until e0 e1 =
+          match this.Evaluate e0 with
+          | Some (JsonValue.Boolean true)   -> Some JsonValue.Null
+          | _ -> this.Evaluate e1 |> ignore; eval_until e0 e1
+        eval_until (Array.get args 0) (Array.get args 1)
+      | "get" ->
+        let k = (Array.get args 0).AsString ()
+        match this.getValue k with
+        | Some v    -> Some (JsonValue.Float v)
+        | None      -> None
+      | "set" ->
+        let k = (Array.get args 0).AsString ()
+        let v = this.substitute (Array.get args 1)
+        match v with
+        | Some v    -> this.setValue k v; Some (JsonValue.Null)
+        | None      -> None
+      | "==" ->
+        let lhs = this.substitute (Array.get args 0)
+        let rhs = this.substitute (Array.get args 1)
+        match (lhs, rhs) with
+        | (Some l, Some r)  -> Some (JsonValue.Boolean (Math.Abs(l - r) < 1e-6))
+        | _                 -> None
+      | "+" ->
+        let lhs = this.substitute (Array.get args 0)
+        let rhs = this.substitute (Array.get args 1)
+        match (lhs, rhs) with
+        | (Some l, Some r)  -> Some (JsonValue.Float (l + r))
+        | _                 -> None
+      | _ -> None
 
 
 let source = """
@@ -43,9 +91,9 @@ let source = """
 
 [<EntryPoint>]
 let main _ =
-    let parsed = JsonValue.Parse source
-    let e = new Evaluator ()
-    match e.Evaluate parsed with
-    | Some value -> Console.WriteLine("result: {0}", value)
-    | None       -> Console.WriteLine("failed to parse sources")
-    0
+  let parsed = orelang.transpile_from_string source
+  let e = new orelang.Engine ()
+  match e.Evaluate parsed with
+  | Some value -> Console.WriteLine("result: {0}", value)
+  | None       -> Console.WriteLine("failed to parse sources")
+  0
