@@ -1,0 +1,2 @@
+#!/bin/bash -e
+winpty "$(dirname $BASH_SOURCE)/.paket/paket.exe" "$@"
