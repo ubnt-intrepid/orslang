@@ -76,32 +76,21 @@ module Orelang =
         member this.Evaluate(expr : Expr) : Expr option =
             match expr with
             | Expr.Command(symbol, []) -> this.GetValue symbol
-            | Expr.Command("step", lines) -> this.EvalStep lines
-            | Expr.Command("until", [ e0; e1 ]) -> this.EvalUntil e0 e1
             | Expr.Command("set", [ Expr.String k; v ]) ->
-                this.Substitute v |> Option.map (fun v ->
-                                         this.SetValue k v
-                                         Expr.Nil)
+              this.Substitute v |> Option.map (fun v -> this.SetValue k v; Expr.Nil)
+            | Expr.Command("step", lines) ->
+              lines |> List.fold (fun acc line -> this.Evaluate line) None
+            | Expr.Command("until", [ e0; e1 ]) -> this.EvalUntil e0 e1
             | Expr.Command("=", [ lhs; rhs ]) -> this.EvalCmp (=) lhs rhs
             | Expr.Command("+", [ lhs; rhs ]) -> this.EvalBinOp (+) lhs rhs
             | _ -> None
 
-        member private this.EvalStep lines =
-            let rec f lines =
-                let ret = this.Evaluate(List.head lines)
-                match (List.tail lines) with
-                | [] -> ret
-                | tl -> f tl
-            f lines
-
         member private this.EvalUntil pred expr =
-            let rec f e0 e1 =
-                match this.Evaluate e0 with
-                | Some(Expr.Bool true) -> Some Expr.Nil
-                | _ ->
-                    this.Evaluate e1 |> ignore
-                    f e0 e1
-            f pred expr
+            let EvalBool pred = match this.Evaluate pred with | Some(Expr.Bool b) -> b | _ -> false
+            while not (EvalBool pred) do
+                this.Evaluate expr |> ignore
+            done
+            Some (Expr.Nil)
 
         member private this.EvalCmp op lhs rhs =
             match (this.Substitute lhs, this.Substitute rhs) with
