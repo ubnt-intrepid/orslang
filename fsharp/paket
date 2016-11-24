@@ -1,2 +1,6 @@
 #!/bin/bash -e
-winpty "$(dirname $BASH_SOURCE)/.paket/paket.exe" "$@"
+if which winpty > /dev/null; then
+  winpty "$(dirname $BASH_SOURCE)/.paket/paket.exe" "$@"
+else
+  mono "$(dirname $BASH_SOURCE)/.paket/paket.exe" "$@"
+fi
