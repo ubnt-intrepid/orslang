@@ -4,6 +4,32 @@ open System.Text.RegularExpressions
 open FSharp.Data
 
 module Orelang =
+    module Parser =
+        open FParsec
+        open FParsec.Primitives
+        open FParsec.CharParsers
+        open FParsec.Error
+
+        type Expr = Token of string
+                  | List of Expr list
+
+        let alphaNum =  anyOf "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                    <|> anyOf "abcdefghijklmnopqrstuvwxyz"
+                    <|> anyOf "+-*/."
+                    <|> digit
+        
+        let token = many1Chars alphaNum |>> Expr.Token
+        
+        let tokenList = pstring "(" >>. sepEndBy token spaces .>> pstring ")" |>> Expr.List
+
+        let expr = token <|> tokenList 
+
+        let list = pstring "(" >>. sepEndBy expr spaces .>> pstring ")"
+        
+        let test s = match run list s with
+                     | Success (r, us, p) -> printfn "success %A %A %A" r us p
+                     | Failure (msg, err, us) -> printfn "error %s %A %A" msg err us
+
     type Expr =
         | Nil
         | Bool of bool
@@ -115,6 +141,11 @@ let main _ =
     (sum)
   )
   """
+    
+    Orelang.Parser.test "(a b c)"
+    Orelang.Parser.test "(a b c))"
+    Orelang.Parser.test "(a b (+ 1 2 c))"
+
     let eng = new Orelang.Engine()
     match Orelang.ParseFromString source with
     | None -> Console.WriteLine("failed to parse sources")
