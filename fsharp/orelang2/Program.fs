@@ -6,10 +6,12 @@ module Parse =
   open FParsec.CharParsers
   open System.IO
 
-  let FromString (s: string) : Result<string, string> =
-    Result.Error "not implemented"
+  type ErrorKind = NotImplememted
 
-  let FromFile (path: string) : Result<string, string> =
+  let FromString (s: string) : Result<string, ErrorKind> =
+    Result.Error ErrorKind.NotImplememted
+
+  let FromFile (path: string) : Result<string, ErrorKind> =
     FromString <| File.ReadAllText path
 
 [<EntryPoint>]
@@ -21,5 +23,5 @@ let main _ =
     printfn "%s: %A" <| System.IO.Path.GetFileName path <| Parse.FromFile path
 
   test_string   "(+ 1 2 (* 3 4))"
-  test_file     "example_sum.ore"
+  test_file     "../../examples/example_sum.ore"
   0
