@@ -3,33 +3,43 @@ open System.Collections.Generic
 open System.Text.RegularExpressions
 open FSharp.Data
 
-module Orelang =
-    module Parser =
-        open FParsec
-        open FParsec.Primitives
-        open FParsec.CharParsers
-        open FParsec.Error
+module Parser =
+    open FParsec
+    open FParsec.Primitives
+    open FParsec.CharParsers
+    open FParsec.Error
 
-        type Expr = Token of string
-                  | List of Expr list
+    type Expr = Token of string
+               | List of Expr list
 
-        let alphaNum =  anyOf "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    type Result = Ok of Expr
+                | Err of string
+
+    let private token =
+        many1Chars (    anyOf "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                     <|> anyOf "abcdefghijklmnopqrstuvwxyz"
-                    <|> anyOf "+-*/."
-                    <|> digit
-        
-        let token = many1Chars alphaNum |>> Expr.Token
-        
-        let tokenList = pstring "(" >>. sepEndBy token spaces .>> pstring ")" |>> Expr.List
+                    <|> anyOf "=!+-*/."
+                    <|> digit)
+        |>> Token
+    
+    let private list =
+        pstring "(" >>. sepEndBy token spaces .>> pstring ")"
+        |>> List
 
-        let expr = token <|> tokenList 
+    let private expr =
+        token <|> list 
 
-        let list = pstring "(" >>. sepEndBy expr spaces .>> pstring ")"
-        
-        let test s = match run list s with
-                     | Success (r, us, p) -> printfn "success %A %A %A" r us p
-                     | Failure (msg, err, us) -> printfn "error %s %A %A" msg err us
+    let Parse (s:string) : Result =
+        match run expr s with
+        | Success (r, _, _) -> Ok r
+        | Failure (msg, _, _) -> Err msg
 
+    let Test (s: string) : unit =
+        match Parse s with
+        | Result.Ok r     -> printfn "%A" r
+        | Result.Err msg  -> printfn "error: %s" msg
+
+module Orelang =
     type Expr =
         | Nil
         | Bool of bool
@@ -130,21 +140,20 @@ module Orelang =
 
 [<EntryPoint>]
 let main _ =
-    let source = """
-  (step
+    let source = """(step
     (set i 10)
     (set sum 0)
-    (until (= (i) 0)
+    (until (= i 0)
       (step
-        (set sum (+ (sum) (i)))
-        (set i (+ (i) -1))))
-    (sum)
-  )
-  """
+        (set sum (+ sum i))
+        (set i (+ i -1))))
+    sum
+  )"""
     
-    Orelang.Parser.test "(a b c)"
-    Orelang.Parser.test "(a b c))"
-    Orelang.Parser.test "(a b (+ 1 2 c))"
+    Parser.Test "(aa bc 10)"
+    Parser.Test "(a b cd))"
+    Parser.Test "(a b (+ (+ 1 2) 2))"
+    Parser.Test source
 
     let eng = new Orelang.Engine()
     match Orelang.ParseFromString source with
