@@ -27,15 +27,12 @@ mod parse {
     Array(Vec<Expr>),
   }
 
-  named!(token<&str>, map_res!(call!(alphanumeric),str::from_utf8));
+  named!(token<&str>, map_res!(call!(alphanumeric), str::from_utf8));
 
   named!(array< Vec<Expr> >,
     delimited!(
       tag!("("),
-      chain!(
-          e: separated_list!(multispace, expr)
-        ~ opt!(multispace),
-      ||{e}),
+      chain!(e:separated_list!(multispace, expr) ~ opt!(multispace), ||{ e }),
       tag!(")")
     )
   );
