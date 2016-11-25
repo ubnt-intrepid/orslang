@@ -11,13 +11,16 @@ let spaces = skip_while (function
     | ' ' | '\n' | '\t' -> true
     | _ -> false)
 
-let token = take_while1 (function
-    | 'a'..'z' | 'A'..'Z' | '0'..'9'
-    | '+' | '-' | '*' | '/' | '=' -> true
-    | _ -> false)
+let token =
+  spaces *>
+  take_while1 (function
+      | 'a'..'z' | 'A'..'Z' | '0'..'9'
+      | '+' | '-' | '*' | '/' | '=' -> true
+      | _ -> false)
+  <* spaces
 
 let tlist (expr: expr Angstrom.t) =
-  string "(" *> sep_by spaces expr <* string ")"
+  spaces *> string "(" *> sep_by spaces expr <* string ")" <* spaces
 
 let expr = fix (fun expr ->
     let token = token      >>| fun t -> Token t in
