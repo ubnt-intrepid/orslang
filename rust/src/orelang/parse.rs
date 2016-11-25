@@ -38,3 +38,9 @@ pub fn from_file(path: &str) -> Result<Expr, super::Error> {
   File::open(path)?.read_to_string(&mut content)?;
   from_str(&content)
 }
+
+impl super::ast::IntoAst for Expr {
+  fn into_ast(self) -> Result<super::ast::Ast, super::Error> {
+    Err(super::Error::BuildAst)
+  }
+}

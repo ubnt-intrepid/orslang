@@ -14,6 +14,6 @@ pub enum Ast {
   Print(Box<Ast>),
 }
 
-pub fn from_expr(expr: Expr) -> Result<Ast, super::Error> {
-  Err(super::Error::BuildAst)
+pub trait IntoAst {
+  fn into_ast(self) -> Result<Ast, super::Error>;
 }

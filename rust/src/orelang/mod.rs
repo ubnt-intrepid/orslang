@@ -3,6 +3,9 @@ use std::io;
 mod parse;
 mod ast;
 
+pub use self::ast::Ast;
+use self::ast::IntoAst;
+
 #[derive(Debug)]
 pub enum Error {
   Io(io::Error),
@@ -17,9 +20,9 @@ impl From<io::Error> for Error {
 }
 
 pub fn parse_from_str(s: &str) -> Result<ast::Ast, Error> {
-  ast::from_expr(parse::from_str(s)?)
+  parse::from_str(s)?.into_ast()
 }
 
 pub fn parse_from_file(path: &str) -> Result<ast::Ast, Error> {
-  ast::from_expr(parse::from_file(path)?)
+  parse::from_file(path)?.into_ast()
 }
