@@ -12,17 +12,16 @@ let spaces = skip_while (function
     | _ -> false)
 
 let token = take_while1 (function
-    | 'a' .. 'z' -> true
-    | 'A' .. 'Z' -> true
-    | '0' .. '9' -> true
+    | 'a'..'z' | 'A'..'Z' | '0'..'9'
     | '+' | '-' | '*' | '/' | '=' -> true
     | _ -> false)
-  >>| fun t -> Token t
+
+let tlist (expr: expr Angstrom.t) =
+  string "(" *> sep_by spaces expr <* string ")"
 
 let expr = fix (fun expr ->
-    let tlist = (string "(" *> sep_by spaces expr <* string ")"
-                 >>| fun l -> List l)
-    in
+    let token = token      >>| fun t -> Token t in
+    let tlist = tlist expr >>| fun l -> List l  in
     token <|> tlist)
 
 let parse_from_str s : expr option =
