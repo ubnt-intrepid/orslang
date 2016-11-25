@@ -9,4 +9,4 @@ BuildTools:  ocamlbuild
 Executable "orelang"
   Path:         src
   MainIs:       main.ml
-  BuildDepends: yojson
+  BuildDepends: angstrom, ppx_deriving, ppx_deriving.show

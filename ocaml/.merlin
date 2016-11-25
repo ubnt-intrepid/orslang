@@ -1,7 +1,6 @@
 S src
-S lib
-
 B _build/src
-B _build/lib
 
-PKG yojson
+PKG angstrom
+PKG ppx_deriving
+PKG ppx_deriving.show
