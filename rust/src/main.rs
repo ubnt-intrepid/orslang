@@ -32,7 +32,10 @@ mod parse {
   named!(array< Vec<Expr> >,
     delimited!(
       tag!("("),
-      separated_list!(multispace, expr),
+      chain!(
+          e: separated_list!(multispace, expr)
+        ~ opt!(multispace),
+      ||{e}),
       tag!(")")
     )
   );
