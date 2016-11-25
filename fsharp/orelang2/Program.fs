@@ -9,26 +9,24 @@ module Parse =
   open System.IO
 
   type Expr = Token of string
-            | List of Expr list
+            | TList of Expr list
 
   type ErrorKind = ParseError of string
 
-  type ExprParser = Parser<Expr, unit>
+  let private expr, exprRef =
+    createParserForwardedToRef<Expr, unit>()
 
-  let private expr, exprRef = createParserForwardedToRef<Expr, unit>()
-
-  let private token : ExprParser = regex "[a-zA-Z0-9\+\-\*\/\=\!]+" |>> Token
+  let private token =
+    regex "[a-zA-Z0-9\+\-\*\/\=\!]+" |>> Token
 
   let private plist =
-    between <| pstring "("
-            <| pstring ")"
-            <| (sepEndBy expr spaces) |>> Expr.List
+    between <| pstring "(" <| pstring ")" <| sepEndBy expr spaces |>> TList
 
-  do exprRef := choice [token
-                        plist]
+  do exprRef := choice [token; plist]
 
   let private parseFromString s =
     run (spaces >>. expr .>> spaces .>> eof) s
+
 
   let FromString (s: string) : Result<Expr, ErrorKind> =
     match parseFromString s with
@@ -37,6 +35,7 @@ module Parse =
 
   let FromFile (path: string) : Result<Expr, ErrorKind> =
     FromString <| File.ReadAllText path
+
 
 [<EntryPoint>]
 let main _ =
