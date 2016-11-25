@@ -1,12 +1,23 @@
-use std::fs::File;
-use std::io::Read;
 use std::str;
 use nom::{self, is_alphanumeric, multispace};
+
+use super::Error;
+use super::ast::{Ast, IntoAst};
+
 
 #[derive(Debug)]
 pub enum Expr {
   Token(String),
   Array(Vec<Expr>),
+}
+
+impl Expr {
+  pub fn from_str(s: &str) -> Result<Expr, Error> {
+    match expr(s.trim().as_bytes()) {
+      nom::IResult::Done(_, expr) => Ok(expr),
+      _ => Err(super::Error::NomParse),
+    }
+  }
 }
 
 #[inline]
@@ -34,21 +45,65 @@ named!(expr<Expr>,
   )
 );
 
-pub fn from_str(s: &str) -> Result<Expr, super::Error> {
-  match expr(s.trim().as_bytes()) {
-    nom::IResult::Done(_, expr) => Ok(expr),
-    _ => Err(super::Error::NomParse),
+fn expr_to_ast(expr: &Expr) -> Result<Ast, Error> {
+  match *expr {
+    Expr::Token(ref s) if s.trim() == "nil" => Ok(Ast::Nil),
+    Expr::Token(ref s) => {
+      Ok(s.parse::<i64>().map(Ast::Number).unwrap_or(Ast::Symbol((*s).clone())))
+    }
+    Expr::Array(ref arr) if arr.len() > 1 => {
+      match arr[0] {
+        Expr::Token(ref s) => {
+          let s: &str = s;
+          match s {
+            "step" => {
+              let mut lines = Vec::with_capacity(arr.len() - 1);
+              for line in &arr[1..] {
+                let line = expr_to_ast(line)?;
+                lines.push(Box::new(line));
+              }
+              Ok(Ast::Step(lines))
+            }
+            "set" => {
+              let symbol: Ast = arr.iter().nth(1).ok_or(Error::BuildAst).and_then(expr_to_ast)?;
+              let value: Ast = arr.iter().nth(2).ok_or(Error::BuildAst).and_then(expr_to_ast)?;
+              if let Ast::Symbol(s) = symbol {
+                Ok(Ast::Set(s, Box::new(value)))
+              } else {
+                Err(Error::BuildAst)
+              }
+            }
+            "until" => {
+              let pred: Ast = arr.iter().nth(1).ok_or(Error::BuildAst).and_then(expr_to_ast)?;
+              let expr: Ast = arr.iter().nth(2).ok_or(Error::BuildAst).and_then(expr_to_ast)?;
+              Ok(Ast::Until(Box::new(pred), Box::new(expr)))
+            }
+            "print" => {
+              let expr: Ast = arr.iter().nth(1).ok_or(Error::BuildAst).and_then(expr_to_ast)?;
+              Ok(Ast::Print(Box::new(expr)))
+            }
+            "=" => {
+              let lhs: Ast = arr.iter().nth(1).ok_or(Error::BuildAst).and_then(expr_to_ast)?;
+              let rhs: Ast = arr.iter().nth(2).ok_or(Error::BuildAst).and_then(expr_to_ast)?;
+              Ok(Ast::Eq(Box::new(lhs), Box::new(rhs)))
+            }
+            "+" => {
+              let lhs: Ast = arr.iter().nth(1).ok_or(Error::BuildAst).and_then(expr_to_ast)?;
+              let rhs: Ast = arr.iter().nth(2).ok_or(Error::BuildAst).and_then(expr_to_ast)?;
+              Ok(Ast::Plus(Box::new(lhs), Box::new(rhs)))
+            }
+            _ => Err(Error::BuildAst),
+          }
+        }
+        _ => Err(Error::BuildAst),
+      }
+    }
+    _ => Err(Error::BuildAst),
   }
 }
 
-pub fn from_file(path: &str) -> Result<Expr, super::Error> {
-  let mut content = String::new();
-  File::open(path)?.read_to_string(&mut content)?;
-  from_str(&content)
-}
-
-impl super::ast::IntoAst for Expr {
-  fn into_ast(self) -> Result<super::ast::Ast, super::Error> {
-    Err(super::Error::BuildAst)
+impl IntoAst for Expr {
+  fn into_ast(self) -> Result<Ast, Error> {
+    expr_to_ast(&self)
   }
 }

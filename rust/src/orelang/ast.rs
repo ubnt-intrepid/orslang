@@ -7,10 +7,9 @@ pub enum Ast {
   Step(Vec<Box<Ast>>),
   Set(String, Box<Ast>),
   Until(Box<Ast>, Box<Ast>),
+  Print(Box<Ast>),
   Eq(Box<Ast>, Box<Ast>),
   Plus(Box<Ast>, Box<Ast>),
-  Neg(Box<Ast>),
-  Print(Box<Ast>),
 }
 
 pub trait IntoAst {

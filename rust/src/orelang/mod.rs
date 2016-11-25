@@ -1,4 +1,5 @@
-use std::io;
+use std::io::{self, Read};
+use std::fs::File;
 
 mod parse;
 mod ast;
@@ -20,9 +21,11 @@ impl From<io::Error> for Error {
 }
 
 pub fn parse_from_str(s: &str) -> Result<ast::Ast, Error> {
-  parse::from_str(s)?.into_ast()
+  parse::Expr::from_str(s)?.into_ast()
 }
 
 pub fn parse_from_file(path: &str) -> Result<ast::Ast, Error> {
-  parse::from_file(path)?.into_ast()
+  let mut content = String::new();
+  File::open(path)?.read_to_string(&mut content)?;
+  parse_from_str(&content)
 }
