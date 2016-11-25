@@ -2,10 +2,10 @@
   (set i 10)
   (set sum 0)
   (until
-    (eq i 0)
+    (= i 0)
     (step
-      (set sum (plus sum i))
-      (set i (plus i (neg 1)))
+      (set sum (+ sum i))
+      (set i (+ i -1))
     )
   )
   (print sum)

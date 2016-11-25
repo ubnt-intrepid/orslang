@@ -4,5 +4,4 @@ version = "0.1.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 
 [dependencies]
-rustc-serialize = "*"
-nom = "*"
+nom = "^2.0"

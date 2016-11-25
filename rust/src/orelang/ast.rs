@@ -1,5 +1,4 @@
-use super::parse::Expr;
-
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum Ast {
   Nil,

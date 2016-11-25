@@ -1,4 +1,3 @@
-extern crate rustc_serialize;
 #[macro_use]
 extern crate nom;
 

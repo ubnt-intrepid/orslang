@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::Read;
 use std::str;
-use nom::{self, alphanumeric, multispace};
+use nom::{self, is_alphanumeric, multispace};
 
 #[derive(Debug)]
 pub enum Expr {
@@ -9,22 +9,30 @@ pub enum Expr {
   Array(Vec<Expr>),
 }
 
-named!(token<&str>, map_res!(call!(alphanumeric), str::from_utf8));
+#[inline]
+fn is_tokenchar(c: u8) -> bool {
+  is_alphanumeric(c) || c == '+' as u8 || c == '-' as u8 || c == '*' as u8 || c == '/' as u8 ||
+  c == '=' as u8 || c == '!' as u8
+}
+
+named!(tokenchar, take_while_s!(is_tokenchar));
+
+named!(token<&str>, map_res!(call!(tokenchar), str::from_utf8));
 
 named!(array< Vec<Expr> >,
-    delimited!(
-      tag!("("),
-      chain!(e:separated_list!(multispace, expr) ~ opt!(multispace), ||{ e }),
-      tag!(")")
-    )
-  );
+  delimited!(
+    tag!("("),
+    chain!(e:separated_list!(multispace, expr) ~ opt!(multispace), ||{ e }),
+    tag!(")")
+  )
+);
 
 named!(expr<Expr>,
-    alt!(
+  alt!(
       array => { |v| Expr::Array(v)               }
     | token => { |s| Expr::Token(String::from(s)) }
-    )
-  );
+  )
+);
 
 pub fn from_str(s: &str) -> Result<Expr, super::Error> {
   match expr(s.trim().as_bytes()) {
