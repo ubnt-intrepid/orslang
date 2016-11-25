@@ -2,6 +2,8 @@
 
 type ('t, 'e) Result = OK of 't | Error of 'e
 
+let rec fix f x = f (fix f) x
+
 module Parse =
   open FParsec
   open FParsec.Primitives
@@ -13,16 +15,14 @@ module Parse =
 
   type ErrorKind = ParseError of string
 
-  let private expr, exprRef =
-    createParserForwardedToRef<Expr, unit>()
-
   let private token =
     regex "[a-zA-Z0-9\+\-\*\/\=\!]+" |>> Token
 
-  let private plist =
+  let private plist expr =
     between <| pstring "(" <| pstring ")" <| sepEndBy expr spaces |>> TList
 
-  do exprRef := choice [token; plist]
+  let private expr =
+    fix <| fun expr -> token <|> plist expr
 
   let private parseFromString s =
     run (spaces >>. expr .>> spaces .>> eof) s
