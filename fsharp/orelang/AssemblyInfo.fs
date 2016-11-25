@@ -1,4 +1,4 @@
-﻿namespace fsharp.AssemblyInfo
+﻿namespace orelang2.AssemblyInfo
 
 open System.Reflection
 open System.Runtime.CompilerServices
@@ -7,11 +7,11 @@ open System.Runtime.InteropServices
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[<assembly: AssemblyTitle("fsharp")>]
+[<assembly: AssemblyTitle("orelang2")>]
 [<assembly: AssemblyDescription("")>]
 [<assembly: AssemblyConfiguration("")>]
 [<assembly: AssemblyCompany("")>]
-[<assembly: AssemblyProduct("fsharp")>]
+[<assembly: AssemblyProduct("orelang2")>]
 [<assembly: AssemblyCopyright("Copyright ©  2016")>]
 [<assembly: AssemblyTrademark("")>]
 [<assembly: AssemblyCulture("")>]
@@ -22,7 +22,7 @@ open System.Runtime.InteropServices
 [<assembly: ComVisible(false)>]
 
 // The following GUID is for the ID of the typelib if this project is exposed to COM
-[<assembly: Guid("c12e8666-b85d-4c6c-89c0-261daf0501a5")>]
+[<assembly: Guid("3b326d91-bc14-47e9-8550-9578031ebea1")>]
 
 // Version information for an assembly consists of the following four values:
 // 

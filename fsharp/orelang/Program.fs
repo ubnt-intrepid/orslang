@@ -1,166 +1,50 @@
-open System
-open System.Collections.Generic
-open System.Text.RegularExpressions
-open FSharp.Data
+// Program.fs
 
-module Parser =
-    open FParsec
-    open FParsec.Primitives
-    open FParsec.CharParsers
-    open FParsec.Error
+type ('t, 'e) Result = OK of 't | Error of 'e
 
-    type Expr = Token of string
-               | List of Expr list
+let rec fix f x = f (fix f) x
 
-    type Result = Ok of Expr
-                | Err of string
+module Parse =
+  open FParsec
+  open FParsec.Primitives
+  open FParsec.CharParsers
+  open System.IO
 
-    let private token =
-        many1Chars (    anyOf "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                    <|> anyOf "abcdefghijklmnopqrstuvwxyz"
-                    <|> anyOf "=!+-*/."
-                    <|> digit)
-        |>> Token
-    
-    let private list =
-        pstring "(" >>. sepEndBy token spaces .>> pstring ")"
-        |>> List
+  type Expr = Token of string
+            | TList of Expr list
 
-    let private expr =
-        token <|> list 
+  type ErrorKind = ParseError of string
 
-    let Parse (s:string) : Result =
-        match run expr s with
-        | Success (r, _, _) -> Ok r
-        | Failure (msg, _, _) -> Err msg
+  let private token =
+    regex "[a-zA-Z0-9\+\-\*\/\=\!]+" |>> Token
 
-    let Test (s: string) : unit =
-        match Parse s with
-        | Result.Ok r     -> printfn "%A" r
-        | Result.Err msg  -> printfn "error: %s" msg
+  let private plist expr =
+    between <| pstring "(" <| pstring ")" <| sepEndBy expr spaces |>> TList
 
-module Orelang =
-    type Expr =
-        | Nil
-        | Bool of bool
-        | Value of decimal
-        | String of string
-        | Command of string * Expr list
+  let private expr =
+    fix <| fun expr -> token <|> plist expr
 
-    let ReReplace (p : string) (r : string) (i : string) = Regex.Replace(i, p, r)
+  let private parseFromString s =
+    run (spaces >>. expr .>> spaces .>> eof) s
 
-    let rec private unwrappedList lst =
-        match lst with
-        | (Some hd) :: tl -> unwrappedList tl |> Option.map (fun tl -> hd :: tl)
-        | None :: _ -> None
-        | [] -> Some []
 
-    let rec private exprFromJson json =
-        match json with
-        | JsonValue.Record _ -> None
-        | JsonValue.Null -> Some Expr.Nil
-        | JsonValue.Boolean b -> Some(Expr.Bool b)
-        | JsonValue.Number n -> Some(Expr.Value n)
-        | JsonValue.Float f -> Some(Expr.Value(decimal f))
-        | JsonValue.String s -> Some(Expr.String s)
-        | JsonValue.Array a ->
-            a
-            |> Array.map exprFromJson
-            |> Array.toList
-            |> unwrappedList
-            |> Option.bind (fun lst ->
-                   match lst with
-                   | (Expr.String s) :: tl -> Some(Expr.Command(s, tl))
-                   | _ -> None)
+  let FromString (s: string) : Result<Expr, ErrorKind> =
+    match parseFromString s with
+    | Success (r, _, _)   -> OK r
+    | Failure (msg, _, _) -> Result.Error <| ParseError msg
 
-    /// Parse a string to Expr.
-    let ParseFromString(s : string) : Expr option =
-        s
-        |> (ReReplace ";.*" "")
-        |> (ReReplace @"\(\s*" "[")
-        |> (ReReplace @"\s*\)" "]")
-        |> (ReReplace "\n" "")
-        |> (ReReplace @"^\s+" "")
-        |> (ReReplace @"\s+$" "")
-        |> (ReReplace @"\s+" ", ")
-        |> (ReReplace @"[+*=](?=[, \]])" "\"$0\"")
-        |> (ReReplace "[a-zA-Z_][a-zA-Z0-9_]*" "\"$0\"")
-        |> JsonValue.Parse
-        |> exprFromJson
+  let FromFile (path: string) : Result<Expr, ErrorKind> =
+    FromString <| File.ReadAllText path
 
-    type Engine() =
-        let mutable env = Dictionary<string, Expr>()
-
-        member private this.GetValue k =
-            match env.TryGetValue(k) with
-            | (true, v) -> Some v
-            | _ -> None
-
-        member private this.SetValue k v =
-            if env.ContainsKey(k) then env.Remove(k) |> ignore
-            env.Add(k, v)
-
-        member private this.Substitute expr =
-            match expr with
-            | Expr.Command _ ->
-                match this.Evaluate expr with
-                | Some(Expr.Value v) -> Some(Expr.Value v)
-                | _ -> None
-            | Expr.Value v -> Some(Expr.Value v)
-            | _ -> None
-
-        member this.Evaluate(expr : Expr) : Expr option =
-            match expr with
-            | Expr.Command(symbol, []) -> this.GetValue symbol
-            | Expr.Command("set", [ Expr.String k; v ]) ->
-              this.Substitute v |> Option.map (fun v -> this.SetValue k v; Expr.Nil)
-            | Expr.Command("step", lines) ->
-              lines |> List.fold (fun acc line -> this.Evaluate line) None
-            | Expr.Command("until", [ e0; e1 ]) -> this.EvalUntil e0 e1
-            | Expr.Command("=", [ lhs; rhs ]) -> this.EvalCmp (=) lhs rhs
-            | Expr.Command("+", [ lhs; rhs ]) -> this.EvalBinOp (+) lhs rhs
-            | _ -> None
-
-        member private this.EvalUntil pred expr =
-            let EvalBool pred = match this.Evaluate pred with | Some(Expr.Bool b) -> b | _ -> false
-            while not (EvalBool pred) do
-                this.Evaluate expr |> ignore
-            done
-            Some (Expr.Nil)
-
-        member private this.EvalCmp op lhs rhs =
-            match (this.Substitute lhs, this.Substitute rhs) with
-            | (Some(Expr.Value l), Some(Expr.Value r)) -> Some(Expr.Bool(op l r))
-            | _ -> None
-
-        member private this.EvalBinOp op lhs rhs =
-            match (this.Substitute lhs, this.Substitute rhs) with
-            | (Some(Expr.Value l), Some(Expr.Value r)) -> Some(Expr.Value(op l r))
-            | _ -> None
 
 [<EntryPoint>]
 let main _ =
-    let source = """(step
-    (set i 10)
-    (set sum 0)
-    (until (= i 0)
-      (step
-        (set sum (+ sum i))
-        (set i (+ i -1))))
-    sum
-  )"""
-    
-    Parser.Test "(aa bc 10)"
-    Parser.Test "(a b cd))"
-    Parser.Test "(a b (+ (+ 1 2) 2))"
-    Parser.Test source
+  let test_string s =
+    printfn "string: %A" <| Parse.FromString s
 
-    let eng = new Orelang.Engine()
-    match Orelang.ParseFromString source with
-    | None -> Console.WriteLine("failed to parse sources")
-    | Some ast ->
-        match eng.Evaluate ast with
-        | Some(Orelang.Expr.Value v) -> Console.WriteLine("computational result = {0}", v)
-        | Some value -> Console.WriteLine("computation was finished but the result isn't available.")
-        | None -> Console.WriteLine("failed to complete evaluation.")
-    0
+  let test_file path =
+    printfn "%s: %A" <| System.IO.Path.GetFileName path <| Parse.FromFile path
+
+  test_string   "(+ 1 2 (* 3 4))"
+  test_file     "../../examples/example_sum.ore"
+  0
