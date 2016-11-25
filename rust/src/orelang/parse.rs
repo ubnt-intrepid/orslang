@@ -2,22 +2,12 @@ use std::str;
 use nom::{self, is_alphanumeric, multispace};
 
 use super::Error;
-use super::ast::{Ast, IntoAst};
 
 
 #[derive(Debug)]
-pub enum Expr {
+enum Expr {
   Token(String),
   Array(Vec<Expr>),
-}
-
-impl Expr {
-  pub fn from_str(s: &str) -> Result<Expr, Error> {
-    match expr(s.trim().as_bytes()) {
-      nom::IResult::Done(_, expr) => Ok(expr),
-      _ => Err(super::Error::NomParse),
-    }
-  }
 }
 
 #[inline]
@@ -44,6 +34,30 @@ named!(expr<Expr>,
     | token => { |s| Expr::Token(String::from(s)) }
   )
 );
+
+
+#[derive(Debug)]
+pub enum Ast {
+  Nil,
+  Symbol(String),
+  Number(i64),
+  Step(Vec<Box<Ast>>),
+  Set(String, Box<Ast>),
+  Until(Box<Ast>, Box<Ast>),
+  Print(Box<Ast>),
+  Eq(Box<Ast>, Box<Ast>),
+  Plus(Box<Ast>, Box<Ast>),
+}
+
+impl Ast {
+  pub fn from_str(s: &str) -> Result<Ast, Error> {
+    let expr = match expr(s.trim().as_bytes()) {
+      nom::IResult::Done(_, expr) => expr,
+      _ => return Err(Error::NomParse),
+    };
+    expr_to_ast(&expr)
+  }
+}
 
 fn expr_to_ast(expr: &Expr) -> Result<Ast, Error> {
   match *expr {
@@ -99,11 +113,5 @@ fn expr_to_ast(expr: &Expr) -> Result<Ast, Error> {
       }
     }
     _ => Err(Error::BuildAst),
-  }
-}
-
-impl IntoAst for Expr {
-  fn into_ast(self) -> Result<Ast, Error> {
-    expr_to_ast(&self)
   }
 }
