@@ -6,7 +6,7 @@ mod parse {
   use std::fs::File;
   use std::io::{self, Read};
   use std::str;
-  use nom::{self, alphanumeric};
+  use nom::{self, alphanumeric, multispace};
 
   #[derive(Debug)]
   pub enum Error {
@@ -32,7 +32,7 @@ mod parse {
   named!(array< Vec<Expr> >,
     delimited!(
       tag!("("),
-      separated_list!(tag!(" "), expr),
+      separated_list!(multispace, expr),
       tag!(")")
     )
   );
@@ -45,7 +45,7 @@ mod parse {
   );
 
   pub fn from_str(s: &str) -> Result<Expr, Error> {
-    match expr(s.as_bytes()) {
+    match expr(s.trim().as_bytes()) {
       nom::IResult::Done(_, expr) => Ok(expr),
       _ => Err(Error::Unknown),
     }
