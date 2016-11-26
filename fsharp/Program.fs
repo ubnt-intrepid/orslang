@@ -5,18 +5,27 @@ type Result<'t, 'e> = OK of 't | Error of 'e
 let rec fix f x = f (fix f) x
 
 module Parse =
+  open System
   open FParsec
   open FParsec.Primitives
   open FParsec.CharParsers
   open System.IO
 
-  type Expr = Token of string
+  type Expr = Nil
+            | Number of decimal
+            | Symbol of string
             | TList of Expr list
 
   type ErrorKind = ParseError of string
 
+  let private nil = pstring "nil" |>> (fun _ -> Nil)
+
+  let private number = regex "[+-]?[0-9]+" |>> (Decimal.Parse >> Number)
+
+  let private symbol = regex "[a-zA-Z0-9\+\-\*\/\=\!]+" |>> Symbol
+
   let private token =
-    spaces >>. regex "[a-zA-Z0-9\+\-\*\/\=\!]+" .>> spaces |>> Token
+    spaces >>. (nil <|> number <|> symbol) .>> spaces
 
   let private plist expr =
     between <| pstring "(" <| pstring ")" <| sepEndBy expr spaces |>> TList
@@ -37,14 +46,12 @@ module Parse =
 
   let rec private toAst (expr: Expr) =
     match expr with
-    | Token "nil" -> Some Nil
-    | Token s ->
-        match System.Decimal.TryParse (s) with
-        | (true, d) -> Some (Number d)
-        | _         -> Some (Symbol s)
+    | Expr.Nil      -> Some Ast.Nil
+    | Expr.Number d -> Some (Ast.Number d)
+    | Expr.Symbol s -> Some (Symbol s)
     | TList l ->
         match l.Head with
-        | Token command ->
+        | Expr.Symbol command ->
           let args = l.Tail |> List.map toAst |> unwrapped
           Option.map (fun args -> Command (command, args)) <| args
         | _ -> None
@@ -72,6 +79,7 @@ let main _ =
     | Result.OK ast -> printfn "%s:\n%A" <| System.IO.Path.GetFileName path <| ast
     | Result.Error msg -> printfn "failed to parse: %A" msg
 
+  test_string   "nil"
   test_string   "(+ 1 2 (* 3 4))"
   test_string   "(+ 1 2 (* 3 4)))"
   test_file     "../examples/example_sum.ore"
