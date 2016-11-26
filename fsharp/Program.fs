@@ -24,23 +24,61 @@ module Parse =
   let private expr =
     fix <| fun expr -> token <|> plist expr
 
-  let FromString (s: string) : Result<Expr, ErrorKind> =
+  type Ast = Nil
+           | Symbol of string
+           | Number of decimal
+           | Command of string * Ast list
+
+  let rec private toAst (expr: Expr) =
+    match expr with
+    | Token s ->
+      if s.Trim() = "nil" then
+        Some Nil
+      else
+        match System.Decimal.TryParse (s) with
+        | (true, d) -> Some <| Number d
+        | _         -> Some <| Symbol s
+    | TList l ->
+      match l.Head with
+      | Token command ->
+        (l.Tail
+         |> List.map toAst
+         |> List.fold
+            (fun acc s ->
+              match acc with
+              | Some l ->
+                match s with
+                | Some s -> Some (List.append l [s])
+                | None -> None
+              | None -> None)
+            (Some []))
+        |> Option.map (fun args -> Command (command, args))
+      | _ -> None
+
+  let FromString (s: string) : Result<Ast, ErrorKind> =
     match run (spaces >>. expr .>> spaces .>> eof) s with
-    | Success (r, _, _)   -> OK r
+    | Success (r, _, _)   -> match toAst r with
+                             | Some ast -> OK ast
+                             | None -> Result.Error <| ParseError "failed to convert to AST"
     | Failure (msg, _, _) -> Result.Error <| ParseError msg
 
-  let FromFile (path: string) : Result<Expr, ErrorKind> =
+  let FromFile (path: string) : Result<Ast, ErrorKind> =
     FromString <| File.ReadAllText path
 
 
 [<EntryPoint>]
 let main _ =
   let test_string s =
-    printfn "string: %A" <| Parse.FromString s
+    match Parse.FromString s with
+    | Result.OK ast -> printfn "string:\n%A" ast
+    | Result.Error msg -> printfn "failed to parse: %A" msg
 
   let test_file path =
-    printfn "%s: %A" <| System.IO.Path.GetFileName path <| Parse.FromFile path
+    match Parse.FromFile path with
+    | Result.OK ast -> printfn "%s:\n%A" <| System.IO.Path.GetFileName path <| ast
+    | Result.Error msg -> printfn "failed to parse: %A" msg
 
   test_string   "(+ 1 2 (* 3 4))"
+  test_string   "(+ 1 2 (* 3 4)))"
   test_file     "../examples/example_sum.ore"
   0
