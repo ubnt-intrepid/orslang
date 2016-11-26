@@ -3,29 +3,36 @@
 open Angstrom
 
 type expr =
-  | Token of string
-  | List of expr list
+  | Nil
+  | Number of int
+  | Symbol of string
+  | Command of string * expr list
 [@@deriving show]
 
 let spaces = skip_while (function
     | ' ' | '\n' | '\t' -> true
     | _ -> false)
 
+let symbol = take_while1 (function
+    | 'a'..'z' | 'A'..'Z' | '0'..'9'
+    | '+' | '-' | '*' | '/' | '=' -> true
+    | _ -> false)
+
+let _token = spaces *> symbol <* spaces
+
 let token =
-  spaces *>
-  take_while1 (function
-      | 'a'..'z' | 'A'..'Z' | '0'..'9'
-      | '+' | '-' | '*' | '/' | '=' -> true
-      | _ -> false)
-  <* spaces
+  _token >>| (fun t ->
+      match t with
+      | "nil" -> Nil
+      | t -> try Number (int_of_string t)
+        with
+        | _ -> Symbol t)
 
-let tlist (expr: expr Angstrom.t) =
-  spaces *> string "(" *> sep_by spaces expr <* string ")" <* spaces
+let command (expr: expr Angstrom.t) =
+  spaces *> string "(" *> (lift2 (fun x y -> (x,y)) _token (sep_by spaces expr)) <* string ")" <* spaces
+  >>| fun (s,a) -> Command (s,a)
 
-let expr = fix (fun expr ->
-    let token = token      >>| fun t -> Token t in
-    let tlist = tlist expr >>| fun l -> List l  in
-    token <|> tlist)
+let expr = fix (fun expr -> token <|> command expr)
 
 let parse_from_str s : expr option =
   match parse_only expr (`String s) with
