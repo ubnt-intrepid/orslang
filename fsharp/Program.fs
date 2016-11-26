@@ -29,31 +29,24 @@ module Parse =
            | Number of decimal
            | Command of string * Ast list
 
+
+  let private unwrappedMap =
+    let f acc s = acc |> Option.bind (fun l -> Option.map (fun s -> List.append l [s]) s)
+    List.fold f (Some [])
+
   let rec private toAst (expr: Expr) =
     match expr with
+    | Token "nil" -> Some Nil
     | Token s ->
-      if s.Trim() = "nil" then
-        Some Nil
-      else
         match System.Decimal.TryParse (s) with
-        | (true, d) -> Some <| Number d
-        | _         -> Some <| Symbol s
+        | (true, d) -> Some (Number d)
+        | _         -> Some (Symbol s)
     | TList l ->
-      match l.Head with
-      | Token command ->
-        (l.Tail
-         |> List.map toAst
-         |> List.fold
-            (fun acc s ->
-              match acc with
-              | Some l ->
-                match s with
-                | Some s -> Some (List.append l [s])
-                | None -> None
-              | None -> None)
-            (Some []))
-        |> Option.map (fun args -> Command (command, args))
-      | _ -> None
+        match l.Head with
+        | Token command ->
+          let args = l.Tail |> List.map toAst |> unwrappedMap
+          Option.map (fun args -> Command (command, args)) <| args
+        | _ -> None
 
   let FromString (s: string) : Result<Ast, ErrorKind> =
     match run (spaces >>. expr .>> spaces .>> eof) s with
