@@ -1,6 +1,6 @@
 // Program.fs
 
-type ('t, 'e) Result = OK of 't | Error of 'e
+type Result<'t, 'e> = OK of 't | Error of 'e
 
 let rec fix f x = f (fix f) x
 
@@ -16,7 +16,7 @@ module Parse =
   type ErrorKind = ParseError of string
 
   let private token =
-    regex "[a-zA-Z0-9\+\-\*\/\=\!]+" |>> Token
+    spaces >>. regex "[a-zA-Z0-9\+\-\*\/\=\!]+" .>> spaces |>> Token
 
   let private plist expr =
     between <| pstring "(" <| pstring ")" <| sepEndBy expr spaces |>> TList
@@ -24,12 +24,8 @@ module Parse =
   let private expr =
     fix <| fun expr -> token <|> plist expr
 
-  let private parseFromString s =
-    run (spaces >>. expr .>> spaces .>> eof) s
-
-
   let FromString (s: string) : Result<Expr, ErrorKind> =
-    match parseFromString s with
+    match run (spaces >>. expr .>> spaces .>> eof) s with
     | Success (r, _, _)   -> OK r
     | Failure (msg, _, _) -> Result.Error <| ParseError msg
 
@@ -46,5 +42,5 @@ let main _ =
     printfn "%s: %A" <| System.IO.Path.GetFileName path <| Parse.FromFile path
 
   test_string   "(+ 1 2 (* 3 4))"
-  test_file     "../../examples/example_sum.ore"
+  test_file     "../examples/example_sum.ore"
   0
