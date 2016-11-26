@@ -23,21 +23,21 @@ let symbol = take_while1 (function
     | '+' | '-' | '*' | '/' | '=' -> true
     | _ -> false)
 
-let _token = ws *> symbol <* ws
+let nil =
+  string "nil" >>| fun _ -> Nil
+
+let num_or_sym =
+  let to_expr s = try Number (int_of_string s) with | _ -> Symbol s in
+  symbol >>| to_expr
 
 let token =
-  _token >>| (fun t ->
-      match t with
-      | "nil" -> Nil
-      | t -> try Number (int_of_string t)
-        with
-        | _ -> Symbol t)
+  nil <|> num_or_sym
 
 let command expr =
-  ws *> lparen *> lift2 (fun t a -> Command (t, a)) _token (sep_by ws expr) <* rparen <* ws
+  lparen *> ws *> lift2 (fun t a -> Command (t, a)) (symbol <* ws) (sep_by ws expr) <* rparen
 
 let expr =
-  fix (fun expr -> token <|> command expr)
+  fix (fun expr -> ws *> (token <|> command expr) <* ws)
 
 let parse_from_str s : expr option =
   match parse_only expr (`String s) with
