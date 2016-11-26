@@ -30,9 +30,10 @@ module Parse =
            | Command of string * Ast list
 
 
-  let private unwrappedMap =
+  let private unwrapped (lst: 'a option list) : 'a list option =
     let f acc s = acc |> Option.bind (fun l -> Option.map (fun s -> List.append l [s]) s)
     List.fold f (Some [])
+      <| lst
 
   let rec private toAst (expr: Expr) =
     match expr with
@@ -44,7 +45,7 @@ module Parse =
     | TList l ->
         match l.Head with
         | Token command ->
-          let args = l.Tail |> List.map toAst |> unwrappedMap
+          let args = l.Tail |> List.map toAst |> unwrapped
           Option.map (fun args -> Command (command, args)) <| args
         | _ -> None
 
