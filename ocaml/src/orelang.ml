@@ -13,12 +13,17 @@ let spaces = skip_while (function
     | ' ' | '\n' | '\t' -> true
     | _ -> false)
 
+let lparen = string "("
+let rparen = string ")"
+
+let ws = spaces
+
 let symbol = take_while1 (function
     | 'a'..'z' | 'A'..'Z' | '0'..'9'
     | '+' | '-' | '*' | '/' | '=' -> true
     | _ -> false)
 
-let _token = spaces *> symbol <* spaces
+let _token = ws *> symbol <* ws
 
 let token =
   _token >>| (fun t ->
@@ -28,11 +33,11 @@ let token =
         with
         | _ -> Symbol t)
 
-let command (expr: expr Angstrom.t) =
-  spaces *> string "(" *> (lift2 (fun x y -> (x,y)) _token (sep_by spaces expr)) <* string ")" <* spaces
-  >>| fun (s,a) -> Command (s,a)
+let command expr =
+  ws *> lparen *> lift2 (fun t a -> Command (t, a)) _token (sep_by ws expr) <* rparen <* ws
 
-let expr = fix (fun expr -> token <|> command expr)
+let expr =
+  fix (fun expr -> token <|> command expr)
 
 let parse_from_str s : expr option =
   match parse_only expr (`String s) with
