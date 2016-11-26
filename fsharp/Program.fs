@@ -20,7 +20,7 @@ module Orelang =
 
     type Result = Result
 
-    let private nil = pstring "nil" |>> (fun _ -> Nil)
+    let private nil = pstring "nil" >>% Nil
 
     let private number = regex "[+-]?[0-9]+" |>> (Decimal.Parse >> Number)
 
@@ -30,12 +30,8 @@ module Orelang =
       spaces >>. (nil <|> number <|> (symbol |>> Symbol)) .>> spaces
 
     let private command expr =
-      between
-        <| pstring "("
-        <| pstring ")"
-        <| pipe2 (spaces >>. symbol .>> spaces)
-                 (sepEndBy expr spaces)
-                 (fun symbol lst -> Command (symbol, lst))
+      pstring "(" >>. spaces >>. symbol .>> spaces .>>. sepEndBy expr spaces .>> pstring ")"
+      |>> fun (symbol, args) -> Command (symbol, args)
 
     let private expr =
       fix <| fun expr -> token <|> command expr
