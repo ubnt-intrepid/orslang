@@ -3,13 +3,6 @@ use nom::{self, is_alphanumeric, multispace};
 
 use super::Error;
 
-
-#[derive(Debug)]
-enum Expr {
-  Token(String),
-  Array(Vec<Expr>),
-}
-
 #[inline]
 fn is_tokenchar(c: u8) -> bool {
   is_alphanumeric(c) || c == '+' as u8 || c == '-' as u8 || c == '*' as u8 || c == '/' as u8 ||
@@ -20,21 +13,33 @@ named!(tokenchar, take_while_s!(is_tokenchar));
 
 named!(token<&str>, map_res!(call!(tokenchar), str::from_utf8));
 
-named!(array< Vec<Expr> >,
+named!(array< (String, Vec<Expr>) >,
   delimited!(
     tag!("("),
-    chain!(opt!(multispace) ~ e:separated_list!(multispace, expr) ~ opt!(multispace), ||{ e }),
+    chain!(
+        opt!(multispace)
+      ~ s: map_res!(call!(tokenchar), str::from_utf8)
+      ~ multispace
+      ~ a: separated_list!(multispace, expr)
+      ~ opt!(multispace)
+   , ||{ (s.to_owned(), a) }),
     tag!(")")
   )
 );
 
 named!(expr<Expr>,
   alt!(
-      array => { |v| Expr::Array(v)               }
+      array => { |(s,a)| Expr::Array(s,a)               }
     | token => { |s| Expr::Token(String::from(s)) }
   )
 );
 
+
+#[derive(Debug)]
+enum Expr {
+  Token(String),
+  Array(String, Vec<Expr>),
+}
 
 #[derive(Debug)]
 pub enum Ast {
@@ -46,33 +51,19 @@ pub enum Ast {
 
 impl Ast {
   pub fn from_str(s: &str) -> Result<Ast, Error> {
-    let expr = match expr(s.trim().as_bytes()) {
-      nom::IResult::Done(_, expr) => expr,
+    match expr(s.trim().as_bytes()) {
+      nom::IResult::Done(_, expr) => Ok(expr.into()),
       _ => return Err(Error::NomParse),
-    };
-    expr_to_ast(&expr)
+    }
   }
 }
 
-fn expr_to_ast(expr: &Expr) -> Result<Ast, Error> {
-  match *expr {
-    Expr::Token(ref s) if s.trim() == "nil" => Ok(Ast::Nil),
-    Expr::Token(ref s) => {
-      Ok(s.parse::<i64>().map(Ast::Number).unwrap_or(Ast::Symbol((*s).clone())))
+impl Into<Ast> for Expr {
+  fn into(self) -> Ast {
+    match self {
+      Expr::Token(ref s) if s.trim() == "nil" => Ast::Nil,
+      Expr::Token(s) => s.parse::<i64>().map(Ast::Number).unwrap_or(Ast::Symbol(s)),
+      Expr::Array(s, arr) => Ast::Command(s, arr.into_iter().map(Into::into).collect()),
     }
-    Expr::Array(ref arr) if arr.len() > 1 => {
-      match arr[0] {
-        Expr::Token(ref s) => {
-          let mut args = Vec::with_capacity(arr.len() - 1);
-          for arg in &arr[1..] {
-            let arg = expr_to_ast(arg)?;
-            args.push(arg);
-          }
-          Ok(Ast::Command(s.to_owned(), args))
-        }
-        _ => Err(Error::BuildAst),
-      }
-    }
-    _ => Err(Error::BuildAst),
   }
 }

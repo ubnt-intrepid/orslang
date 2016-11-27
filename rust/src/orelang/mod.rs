@@ -9,7 +9,6 @@ pub use self::parse::Ast;
 pub enum Error {
   Io(io::Error),
   NomParse,
-  BuildAst,
 }
 
 impl From<io::Error> for Error {
