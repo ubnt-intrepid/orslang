@@ -1,8 +1,8 @@
 import scala.util.parsing.combinator._
 import scala.io.Source
 
-sealed trait Expr
-case class Nil() extends Expr
+sealed abstract trait Expr
+case object Nil extends Expr
 case class Bool(b: Boolean) extends Expr
 case class Number(n: Int) extends Expr
 case class Symbol(s: String) extends Expr
@@ -13,7 +13,7 @@ object ExprParser extends RegexParsers {
   def ws = """[ \t\n]*""".r
 
   def _nil: Parser[Expr] =
-    "nil".r ~> success(Nil())
+    "nil".r ~> success(Nil)
 
   def _boolean: Parser[Expr] =
     "true".r  ~> success(Bool(true)) |
@@ -42,6 +42,7 @@ object ExprParser extends RegexParsers {
   def from_file(path: String): Either[String, Expr] =
     from_str(Source.fromFile(path).mkString)
 }
+
 
 object Main {
   def main(args: Array[String]) = {
