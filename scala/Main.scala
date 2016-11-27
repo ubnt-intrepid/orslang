@@ -39,7 +39,11 @@ object ExprParser extends RegexParsers {
 
 object Main {
   def main(args: Array[String]) = {
+    println(ExprParser("nil"))
+    println(ExprParser("false"))
+    println(ExprParser("-10"))
     println(ExprParser("hoge"))
+    println(ExprParser("(+ 1 (+ sum -1))"))
     println(ExprParser(Source.fromFile("../examples/example_sum.ore").mkString))
   }
 }
