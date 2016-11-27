@@ -1,4 +1,5 @@
 import scala.util.parsing.combinator._
+import scala.io.Source
 
 sealed trait Expr
 case class Nil() extends Expr
@@ -24,9 +25,10 @@ object ExprParser extends RegexParsers {
     """[a-zA-Z0-9\+\-\*\/\=\!]+""".r ^^ { Symbol(_) }
 
   def _function: Parser[Expr] =
-    ws ~> "(" ~> _symbol <~ repsep(_expr, """[ \t\n]+""".r) <~ ")" <~ ws
+    ws ~> "(" ~> ws ~> _symbol <~ ws <~ repsep(_expr, """[ \t\n]+""".r) <~ ")" <~ ws
 
-  def _expr = _nil | _boolean | _number | _symbol | _function
+  def _expr: Parser[Expr] =
+    ws ~> (_nil | _boolean | _number | _symbol | _function) <~ ws
 
   def apply(str: String): Either[String, Expr] =
     parseAll(_expr, str) match {
@@ -38,5 +40,6 @@ object ExprParser extends RegexParsers {
 object Main {
   def main(args: Array[String]) = {
     println(ExprParser("hoge"))
+    println(ExprParser(Source.fromFile("../examples/example_sum.ore").mkString))
   }
 }
