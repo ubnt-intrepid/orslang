@@ -1,14 +1,23 @@
 // Program.fs
 
+open System.IO
+open System.Collections.Generic
+
 type Result<'t, 'e> = OK of 't | Error of 'e
 
 let rec fix f x = f (fix f) x
 
 module Orelang =
   type Expr = Nil
+            | Boolean of bool
             | Number of decimal
             | Symbol of string
             | Function of string * Expr list
+    with
+      member this.ToSymbol() =
+        match this with
+        | Symbol s -> Some s
+        | _ -> None
 
   type ErrorKind = ParseError of string
 
@@ -49,7 +58,7 @@ module Orelang =
     ParseFromString <| System.IO.File.ReadAllText path
 
   type Engine() =
-    let env = new System.Collections.Generic.Dictionary<string, Expr>()
+    let env = new Dictionary<string, Expr>()
 
     member private this.getValue k =
       match env.TryGetValue(k) with
@@ -60,37 +69,59 @@ module Orelang =
       env.Remove(k) |> ignore
       env.Add(k, v)
 
+    member this.evalFunc name (args: Expr list) =
+      match name with
+      | "set" ->
+        try Some (List.item 0 args) with | _ -> None
+        |> Option.bind (fun s -> s.ToSymbol())
+        |> Option.bind (fun k ->
+           try Some (List.item 1 args) with | _ -> None
+           |> Option.bind (fun v ->
+              this.setValue k v; Some Nil))
+      | "until" -> None
+      | "step" -> None
+      | "+" -> None
+      | "=" -> None
+      | _ -> None
+
     member this.Evaluate (expr: Expr) : Expr option =
-      Some expr
+      match expr with
+      | Nil | Boolean _ | Number _  -> Some expr
+      | Symbol k                    -> this.getValue k
+      | Function (name, args)       -> this.evalFunc name args
 
-
-open System.IO
+    member this.print() =
+      printfn "env: %A" env
 
 [<EntryPoint>]
 let main _ =
-  let repo_root = Directory.GetParent(__SOURCE_DIRECTORY__).ToString()
-  
-  let test_string s =
+  let testString s =
+    printfn "\nstring: %s" s
     match Orelang.ParseFromString s with
-    | Result.OK ast -> printfn "string:\n%A\n" ast
-    | Result.Error msg -> printfn "failed to parse: %A\n" msg
+    | Result.Error msg ->
+      printfn "failed to parse: %A\n" msg
+    | Result.OK expr ->
+      let engine = Orelang.Engine()
+      let result = engine.Evaluate expr
+      printfn "result: %A" result
+      engine.print()
 
-  let test_file path =
-    match Orelang.ParseFromFile path with
-    | Result.OK ast -> printfn "%s:\n%A\n" <| System.IO.Path.GetFileName path <| ast
-    | Result.Error msg -> printfn "failed to parse: %A\n" msg
+  let testFile filename =
+    printfn "\nfile: %s" filename
+    let repo_root = Directory.GetParent(__SOURCE_DIRECTORY__).ToString()
+    match Orelang.ParseFromFile <| repo_root + "/examples/" + filename with
+    | Result.Error msg ->
+      printfn "failed to parse: %A\n" msg
+    | Result.OK expr ->
+      let engine = Orelang.Engine()
+      let result = engine.Evaluate expr
+      printfn "result: %A" result
+      engine.print()
 
-  test_string   "nil"
-  test_string   "(+ 1 2 (* 3 4))"
-  test_file  <| repo_root + "/examples/example_sum.ore"
-
-  match Orelang.ParseFromFile <| repo_root + "/examples/example_sum.ore" with
-  | Result.Error msg ->
-    printfn "failed to parse: %A\n" msg
-  | Result.OK expr ->
-    let engine = Orelang.Engine()
-    let result = engine.Evaluate expr
-    printfn "result: %A" result
+  testString "nil"
+  testString "(+ 1 2 (* 3 4))"
+  testString "(set i 10)"
+  testFile   "example_sum.ore"
 
   // failure case
   // test_string   "(+ 1 2 (* 3 4)))"
