@@ -1,12 +1,22 @@
 use std::str;
-use nom::{self, is_alphanumeric, multispace};
+use nom::{self, multispace};
 
 use super::Error;
 
+
+#[derive(Debug)]
+pub enum Expr {
+  Symbol(String),
+  Function(String, Vec<Expr>),
+}
+
+
 #[inline]
 fn is_tokenchar(c: u8) -> bool {
-  is_alphanumeric(c) || c == '+' as u8 || c == '-' as u8 || c == '*' as u8 || c == '/' as u8 ||
-  c == '=' as u8 || c == '!' as u8
+  match c as char {
+    'a'...'z' | 'A'...'Z' | '0'...'9' | '+' | '-' | '*' | '/' | '=' | '!' => true,
+    _ => false,
+  }
 }
 
 named!(tokenchar, take_while_s!(is_tokenchar));
@@ -29,41 +39,16 @@ named!(array< (String, Vec<Expr>) >,
 
 named!(expr<Expr>,
   alt!(
-      array => { |(s,a)| Expr::Array(s,a)               }
-    | token => { |s| Expr::Token(String::from(s)) }
+      array => { |(s,a)| Expr::Function(s,a) }
+    | token => { |s| Expr::Symbol(String::from(s)) }
   )
 );
 
-
-#[derive(Debug)]
-enum Expr {
-  Token(String),
-  Array(String, Vec<Expr>),
-}
-
-#[derive(Debug)]
-pub enum Ast {
-  Nil,
-  Symbol(String),
-  Number(i64),
-  Command(String, Vec<Ast>),
-}
-
-impl Ast {
-  pub fn from_str(s: &str) -> Result<Ast, Error> {
+impl Expr {
+  pub fn from_str(s: &str) -> Result<Expr, Error> {
     match expr(s.trim().as_bytes()) {
-      nom::IResult::Done(_, expr) => Ok(expr.into()),
+      nom::IResult::Done(_, expr) => Ok(expr),
       _ => return Err(Error::NomParse),
-    }
-  }
-}
-
-impl Into<Ast> for Expr {
-  fn into(self) -> Ast {
-    match self {
-      Expr::Token(ref s) if s.trim() == "nil" => Ast::Nil,
-      Expr::Token(s) => s.parse::<i64>().map(Ast::Number).unwrap_or(Ast::Symbol(s)),
-      Expr::Array(s, arr) => Ast::Command(s, arr.into_iter().map(Into::into).collect()),
     }
   }
 }
