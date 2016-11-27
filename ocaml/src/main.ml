@@ -19,6 +19,8 @@ let test_file filename =
 
 let () =
   test_str "hoge";
+  test_str "true";
+  test_str "nil";
   test_str "(set sum 0)";
   test_str "(set sum (+ 1 0 ) ) ";
 

@@ -4,9 +4,10 @@ open Angstrom
 
 type expr =
   | Nil
+  | Bool of bool
   | Number of int
   | Symbol of string
-  | Command of string * expr list
+  | Function of { name: string; args: expr list; }
 [@@deriving show]
 
 let spaces = skip_while (function
@@ -24,20 +25,28 @@ let symbol = take_while1 (function
     | _ -> false)
 
 let nil =
-  string "nil" >>| fun _ -> Nil
+  string "nil" *> return Nil
+
+let _bool =
+  string "true" *> return (Bool true)
+  <|>
+  string "false" *> return (Bool false)
 
 let num_or_sym =
   let to_expr s = try Number (int_of_string s) with | _ -> Symbol s in
   symbol >>| to_expr
 
-let token =
-  nil <|> num_or_sym
-
 let command expr =
-  lparen *> ws *> lift2 (fun t a -> Command (t, a)) (symbol <* ws) (sep_by ws expr) <* rparen
+  lparen *> ws *> lift2 (fun s a -> Function { name = s; args = a; }) (symbol <* ws) (sep_by ws expr) <* rparen
 
-let expr =
-  fix (fun expr -> ws *> (token <|> command expr) <* ws)
+let expr = fix (fun expr ->
+    let token =
+      nil
+      <|> _bool
+      <|> num_or_sym
+      <|> command expr
+    in
+    ws *> token <* ws)
 
 let parse_from_str s : expr option =
   match parse_only expr (`String s) with
