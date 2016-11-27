@@ -4,13 +4,6 @@ use nom::{self, multispace};
 use super::Error;
 
 
-#[derive(Debug)]
-pub enum Expr {
-  Symbol(String),
-  Function(String, Vec<Expr>),
-}
-
-
 #[inline]
 fn is_tokenchar(c: u8) -> bool {
   match c as char {
@@ -18,12 +11,45 @@ fn is_tokenchar(c: u8) -> bool {
     _ => false,
   }
 }
-
 named!(tokenchar, take_while_s!(is_tokenchar));
 
-named!(token<&str>, map_res!(call!(tokenchar), str::from_utf8));
 
-named!(array< (String, Vec<Expr>) >,
+#[derive(Debug)]
+pub enum Expr {
+  Nil,
+  Bool(bool),
+  Number(i64),
+  Symbol(String),
+  Function(String, Vec<Expr>),
+}
+
+named!(expr<Expr>, alt!(
+     function
+   | nil
+   | boolean
+   | num_or_sym));
+
+named!(nil<Expr>,
+  map!(tag!("nil"), |_| Expr::Nil));
+
+named!(boolean<Expr>,
+  alt!(
+      tag!("true")  => { |_| Expr::Bool(true) }
+    | tag!("false") => { |_| Expr::Bool(false) }
+  ));
+
+named!(num_or_sym <Expr>,
+  map_res!(call!(tokenchar),
+  |t| -> Result<Expr, ()> {
+    let t = str::from_utf8(t).map_err(|_|())?;
+    match t {
+      t if t.parse::<i64>().is_ok()
+        => Ok(Expr::Number(t.parse::<i64>().unwrap())),
+      _ => Ok(Expr::Symbol(t.into())),
+    }
+  }));
+
+named!(function<Expr>,
   delimited!(
     tag!("("),
     chain!(
@@ -32,17 +58,11 @@ named!(array< (String, Vec<Expr>) >,
       ~ multispace
       ~ a: separated_list!(multispace, expr)
       ~ opt!(multispace)
-   , ||{ (s.to_owned(), a) }),
+   , ||{ Expr::Function(s.to_owned(), a) }),
     tag!(")")
   )
 );
 
-named!(expr<Expr>,
-  alt!(
-      array => { |(s,a)| Expr::Function(s,a) }
-    | token => { |s| Expr::Symbol(String::from(s)) }
-  )
-);
 
 impl Expr {
   pub fn from_str(s: &str) -> Result<Expr, Error> {
