@@ -13,15 +13,16 @@ module Orelang =
             | Number of decimal
             | Symbol of string
             | Function of string * Expr list
-    with
-      member this.ToBoolean() =
-        match this with | Boolean b -> Some b | _ -> None
 
-      member this.ToNumber() =
-        match this with | Number d -> Some d | _ -> None
+  module E =
+    let ToBoolean e =
+        match e with | Expr.Boolean b -> Some b | _ -> None
 
-      member this.ToSymbol() =
-        match this with | Symbol s -> Some s | _ -> None
+    let ToNumber e =
+        match e with | Number d -> Some d | _ -> None
+
+    let ToSymbol e =
+        match e with | Symbol s -> Some s | _ -> None
 
   type ErrorKind = ParseError of string
 
@@ -61,6 +62,14 @@ module Orelang =
   let ParseFromFile (path: string) : Result<Expr, ErrorKind> =
     ParseFromString <| System.IO.File.ReadAllText path
 
+  type MaybeBuilder() =
+    member this.Bind(x, f) = Option.bind f x
+    member this.Return(x) = Some x
+
+  let maybe = new MaybeBuilder()
+
+  let (>>=) x f = x |> Option.bind f
+
   type Engine() =
     let env = new Dictionary<string, Expr>()
 
@@ -75,51 +84,42 @@ module Orelang =
 
     member this.evalFunc name (args: Expr list) =
       match name with
-      | "set" ->
-        try Some (List.item 0 args) with | _ -> None
-        |> Option.bind (fun s -> s.ToSymbol())
-        |> Option.bind (fun k ->
-           try Some (List.item 1 args) with | _ -> None
-           |> Option.bind (fun v ->
-              this.setValue k v; Some Nil))
+      | "set" -> maybe {
+          let! k = List.tryItem 0 args >>= E.ToSymbol
+          let! v = List.tryItem 1 args
+          this.setValue k v
+          return Nil
+        }
 
-      | "until" ->
-        try Some (List.item 0 args) with | _ -> None
-        |> Option.bind (fun pred ->
-           try Some (List.item 1 args) with | _ -> None
-           |> Option.bind (fun expr ->
-             let eval = seq {
-               while true do
-                  let p = this.Evaluate pred |> Option.bind (fun s -> s.ToBoolean())
-                  yield match p with
-                        | Some false -> true
-                        | _ -> false
-               done
-             }
-             eval |> Seq.takeWhile (fun s -> s)
-                  |> Seq.fold (fun _ _ -> this.Evaluate expr |> ignore; true) true
-                  |> ignore
-             Some Nil))
+      | "until" -> maybe {
+          let! pred = List.tryItem 0 args
+          let! expr = List.tryItem 1 args
+          seq {
+            while true do
+              yield
+                match this.Evaluate pred >>= E.ToBoolean with
+                | Some false -> true
+                | _ -> false
+            done
+          } |> Seq.takeWhile (fun s -> s)
+            |> Seq.fold (fun _ _ -> this.Evaluate expr |> ignore; true) true
+            |> ignore
+          return Nil
+        }
 
       | "step" -> None
 
-      | "+" ->
-        try Some (List.item 0 args) with | _ -> None
-        |> Option.bind (fun s -> s.ToNumber())
-        |> Option.bind (fun lhs ->
-           try Some (List.item 1 args) with | _ -> None
-           |> Option.bind (fun s -> s.ToNumber())
-           |> Option.bind (fun rhs ->
-              Some (Number (lhs + rhs))))
+      | "+" -> maybe {
+          let! lhs = List.tryItem 0 args >>= E.ToNumber
+          let! rhs = List.tryItem 1 args >>= E.ToNumber
+          return Number (lhs + rhs)
+        }
 
-      | "=" ->
-        try Some (List.item 0 args) with | _ -> None
-        |> Option.bind (fun s -> s.ToNumber())
-        |> Option.bind (fun lhs ->
-           try Some (List.item 1 args) with | _ -> None
-           |> Option.bind (fun s -> s.ToNumber())
-           |> Option.bind (fun rhs ->
-              Some (Boolean (lhs = rhs))))
+      | "=" -> maybe {
+          let! lhs = List.tryItem 0 args >>= E.ToNumber
+          let! rhs = List.tryItem 1 args >>= E.ToNumber
+          return Boolean (lhs = rhs)
+        }
 
       | _ -> None
 
