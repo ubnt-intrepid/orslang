@@ -14,10 +14,14 @@ module Orelang =
             | Symbol of string
             | Function of string * Expr list
     with
+      member this.ToBoolean() =
+        match this with | Boolean b -> Some b | _ -> None
+
+      member this.ToNumber() =
+        match this with | Number d -> Some d | _ -> None
+
       member this.ToSymbol() =
-        match this with
-        | Symbol s -> Some s
-        | _ -> None
+        match this with | Symbol s -> Some s | _ -> None
 
   type ErrorKind = ParseError of string
 
@@ -78,10 +82,45 @@ module Orelang =
            try Some (List.item 1 args) with | _ -> None
            |> Option.bind (fun v ->
               this.setValue k v; Some Nil))
-      | "until" -> None
+
+      | "until" ->
+        try Some (List.item 0 args) with | _ -> None
+        |> Option.bind (fun pred ->
+           try Some (List.item 1 args) with | _ -> None
+           |> Option.bind (fun expr ->
+             let eval = seq {
+               while true do
+                  let p = this.Evaluate pred |> Option.bind (fun s -> s.ToBoolean())
+                  yield match p with
+                        | Some false -> true
+                        | _ -> false
+               done
+             }
+             eval |> Seq.takeWhile (fun s -> s)
+                  |> Seq.fold (fun _ _ -> this.Evaluate expr |> ignore; true) true
+                  |> ignore
+             Some Nil))
+
       | "step" -> None
-      | "+" -> None
-      | "=" -> None
+
+      | "+" ->
+        try Some (List.item 0 args) with | _ -> None
+        |> Option.bind (fun s -> s.ToNumber())
+        |> Option.bind (fun lhs ->
+           try Some (List.item 1 args) with | _ -> None
+           |> Option.bind (fun s -> s.ToNumber())
+           |> Option.bind (fun rhs ->
+              Some (Number (lhs + rhs))))
+
+      | "=" ->
+        try Some (List.item 0 args) with | _ -> None
+        |> Option.bind (fun s -> s.ToNumber())
+        |> Option.bind (fun lhs ->
+           try Some (List.item 1 args) with | _ -> None
+           |> Option.bind (fun s -> s.ToNumber())
+           |> Option.bind (fun rhs ->
+              Some (Boolean (lhs = rhs))))
+
       | _ -> None
 
     member this.Evaluate (expr: Expr) : Expr option =
@@ -121,6 +160,7 @@ let main _ =
   testString "nil"
   testString "(+ 1 2 (* 3 4))"
   testString "(set i 10)"
+  testString "(until (= 1 1) (set i 10))"
   testFile   "example_sum.ore"
 
   // failure case
