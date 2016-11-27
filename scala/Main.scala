@@ -1,7 +1,42 @@
 import scala.util.parsing.combinator._
 
+sealed trait Expr
+case class Nil() extends Expr
+case class Bool(b: Boolean) extends Expr
+case class Number(n: Int) extends Expr
+case class Symbol(s: String) extends Expr
+case class Function(name: String, args: Seq[Expr]) extends Expr
+
+
+object ExprParser extends RegexParsers {
+  def ws = """[ \t\n]*""".r
+
+  def _nil: Parser[Expr] =
+    "nil".r ~> success(Nil())
+
+  def _boolean: Parser[Expr] =
+    "true".r ~> success(Bool(true)) | "false".r ~> success(Bool(false))
+
+  def _number: Parser[Expr] =
+    """[\+\-]?[1-9][0-9]+""".r ^^ { case (s) => Number(s.toInt) }
+
+  def _symbol: Parser[Expr] =
+    """[a-zA-Z0-9\+\-\*\/\=\!]+""".r ^^ { Symbol(_) }
+
+  def _function: Parser[Expr] =
+    ws ~> "(" ~> _symbol <~ repsep(_expr, """[ \t\n]+""".r) <~ ")" <~ ws
+
+  def _expr = _nil | _boolean | _number | _symbol | _function
+
+  def apply(str: String): Either[String, Expr] =
+    parseAll(_expr, str) match {
+      case Success(p, next)     => Right(p)
+      case NoSuccess(msg, next) => Left(s"$msg on line ${next.pos.line} on column ${next.pos.column}")
+    }
+}
+
 object Main {
   def main(args: Array[String]) = {
-    println("Hello, scala")
+    println(ExprParser("hoge"))
   }
 }
