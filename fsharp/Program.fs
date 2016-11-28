@@ -7,6 +7,15 @@ type Result<'t, 'e> = OK of 't | Error of 'e
 
 let rec fix f x = f (fix f) x
 
+type MaybeBuilder() =
+  member this.Bind(x, f) = Option.bind f x
+  member this.Return(x) = Some x
+
+let maybe = new MaybeBuilder()
+
+let (>>=) x f = x |> Option.bind f
+
+
 module Orelang =
   type ErrorKind = ParseError of string
 
@@ -62,15 +71,6 @@ module Orelang =
   let ParseFromFile (path: string) : Result<expr, ErrorKind> =
     ParseFromString <| System.IO.File.ReadAllText path
 
-  type MaybeBuilder() =
-    member this.Bind(x, f) = Option.bind f x
-    member this.Return(x) = Some x
-
-  let maybe = new MaybeBuilder()
-
-  let (>>=) x f = x |> Option.bind f
-
-  let (>>) x y = x |> Option.bind (fun _ -> y)
 
   type Engine() =
     let env = new Dictionary<string, expr>()
@@ -114,11 +114,14 @@ module Orelang =
           | tl -> eval_step tl
         eval_step args
 
-      | "+" -> maybe {
-          let! lhs = List.tryItem 0 args >>= this.Evaluate >>= Expr.ToNumber
-          let! rhs = List.tryItem 1 args >>= this.Evaluate >>= Expr.ToNumber
-          return Number (lhs + rhs)
-        }
+      | "+" ->
+        args
+        |> List.fold (fun acc x -> maybe {
+             let! acc = acc
+             let! x = x |> this.Evaluate >>= Expr.ToNumber
+             return acc + x
+           }) (Some(decimal 0))
+        |> Option.map Number
 
       | "=" -> maybe {
           let! lhs = List.tryItem 0 args >>= this.Evaluate >>= Expr.ToNumber
@@ -132,7 +135,11 @@ module Orelang =
           return Nil
         }
 
-      | _ -> None
+      | "quote" -> List.tryHead args
+
+      | s -> s |> this.getValue
+             >>= Expr.ToSymbol
+             >>= (fun s -> this.evalFunc s args)
 
     member this.Evaluate (expr: expr) : expr option =
       match expr with
@@ -168,7 +175,10 @@ let main _ =
   testString "(+ 1 2 (* 3 4))"
   testString "(set i 10)"
   testString "(until (= 1 1) (set i 10))"
+  testString "(step (set i (quote hoge)) (print i))"
+  testString "(step (set i (quote (+ 1 2 3))) (print i))"
   testFile   "example_sum.ore"
+  testFile   "example_firstclass_op.ore"
 
   // failure case
   // test_string   "(+ 1 2 (* 3 4)))"
