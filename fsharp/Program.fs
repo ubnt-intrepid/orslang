@@ -96,10 +96,10 @@ module Orelang =
   let ParseFromFile (path: string) : Result<expr, ErrorKind> =
     ParseFromString <| System.IO.File.ReadAllText path
 
-  type Engine() as this =
+  type Engine() =
     let env = new Dictionary<string, expr>()
 
-    do
+    member this.Default () =
       let defineOperator name f = env.Add(name, Operator(operator_t(f)))
 
       defineOperator "set" <| fun args -> maybe {
@@ -159,6 +159,8 @@ module Orelang =
         return Boolean (lhs = rhs)
       }
 
+      this
+
     member private this.getValue k =
       match env.TryGetValue(k) with
       | (true, v) -> Some v
@@ -177,8 +179,13 @@ module Orelang =
         | _                  -> None)
 
     member this.evalLambda syn expr args =
+      let local_eng = Engine()
       // FIX: use local environment
-      List.zip syn args |> List.map (fun (k,v) -> this.setValue k v) |> List.fold (fun acc _ -> acc) |> ignore
+      for k, v in List.zip syn args do
+        this.setValue k v
+      this.evaluate expr local_eng
+
+    member this.evaluate expr local =
       this.Evaluate expr
 
     member this.Evaluate (expr: expr) : expr option =
@@ -200,7 +207,7 @@ let main _ =
     | Result.Error msg ->
       printfn "failed to parse: %A\n" msg
     | Result.OK expr ->
-      let engine = Orelang.Engine()
+      let engine = Orelang.Engine().Default()
       printfn "result: %A" <| engine.Evaluate expr
 
   let testString s =
