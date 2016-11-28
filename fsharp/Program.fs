@@ -8,23 +8,23 @@ type Result<'t, 'e> = OK of 't | Error of 'e
 let rec fix f x = f (fix f) x
 
 module Orelang =
-  type Expr = Nil
+  type ErrorKind = ParseError of string
+
+  type expr = Nil
             | Boolean of bool
             | Number of decimal
             | Symbol of string
-            | Function of string * Expr list
+            | Function of string * expr list
 
-  module E =
+  module Expr =
     let ToBoolean e =
-        match e with | Expr.Boolean b -> Some b | _ -> None
+        match e with | Boolean b -> Some b | _ -> None
 
     let ToNumber e =
         match e with | Number d -> Some d | _ -> None
 
     let ToSymbol e =
         match e with | Symbol s -> Some s | _ -> None
-
-  type ErrorKind = ParseError of string
 
   module P =
     open FParsec
@@ -56,10 +56,10 @@ module Orelang =
       | Failure (msg, _, _) -> Result.Error <| ParseError msg
 
 
-  let ParseFromString (s: string) : Result<Expr, ErrorKind> =
+  let ParseFromString (s: string) : Result<expr, ErrorKind> =
     P.Parse s
 
-  let ParseFromFile (path: string) : Result<Expr, ErrorKind> =
+  let ParseFromFile (path: string) : Result<expr, ErrorKind> =
     ParseFromString <| System.IO.File.ReadAllText path
 
   type MaybeBuilder() =
@@ -70,8 +70,10 @@ module Orelang =
 
   let (>>=) x f = x |> Option.bind f
 
+  let (>>) x y = x |> Option.bind (fun _ -> y)
+
   type Engine() =
-    let env = new Dictionary<string, Expr>()
+    let env = new Dictionary<string, expr>()
 
     member private this.getValue k =
       match env.TryGetValue(k) with
@@ -82,48 +84,58 @@ module Orelang =
       env.Remove(k) |> ignore
       env.Add(k, v)
 
-    member this.evalFunc name (args: Expr list) =
+    member this.evalFunc name args =
       match name with
       | "set" -> maybe {
-          let! k = List.tryItem 0 args >>= E.ToSymbol
-          let! v = List.tryItem 1 args
+          let! k = List.tryItem 0 args >>= Expr.ToSymbol
+          let! v = List.tryItem 1 args >>= this.Evaluate
           this.setValue k v
           return Nil
         }
 
-      | "until" -> maybe {
-          let! pred = List.tryItem 0 args
-          let! expr = List.tryItem 1 args
-          seq {
-            while true do
-              yield
-                match this.Evaluate pred >>= E.ToBoolean with
-                | Some false -> true
-                | _ -> false
-            done
-          } |> Seq.takeWhile (fun s -> s)
-            |> Seq.fold (fun _ _ -> this.Evaluate expr |> ignore; true) true
-            |> ignore
-          return Nil
-        }
+      | "until" ->
+         let rec f pred expr =
+           match this.Evaluate pred with
+           | Some(Boolean true) -> Some Nil
+           | _ ->
+              this.Evaluate expr |> ignore
+              f pred expr
+         maybe {
+           let! pred = List.tryItem 0 args
+           let! expr = List.tryItem 1 args
+           f pred expr |> ignore
+           return Nil
+         }
 
-      | "step" -> None
+      | "step" ->
+        let rec eval_step lines =
+          let ret = this.Evaluate(List.head lines)
+          match (List.tail lines) with
+          | [] -> ret
+          | tl -> eval_step tl
+        eval_step args
 
       | "+" -> maybe {
-          let! lhs = List.tryItem 0 args >>= E.ToNumber
-          let! rhs = List.tryItem 1 args >>= E.ToNumber
+          let! lhs = List.tryItem 0 args >>= this.Evaluate >>= Expr.ToNumber
+          let! rhs = List.tryItem 1 args >>= this.Evaluate >>= Expr.ToNumber
           return Number (lhs + rhs)
         }
 
       | "=" -> maybe {
-          let! lhs = List.tryItem 0 args >>= E.ToNumber
-          let! rhs = List.tryItem 1 args >>= E.ToNumber
+          let! lhs = List.tryItem 0 args >>= this.Evaluate >>= Expr.ToNumber
+          let! rhs = List.tryItem 1 args >>= this.Evaluate >>= Expr.ToNumber
           return Boolean (lhs = rhs)
+        }
+
+      | "print" -> maybe {
+          let! arg = List.tryItem 0 args >>= this.Evaluate
+          printfn "%A" arg
+          return Nil
         }
 
       | _ -> None
 
-    member this.Evaluate (expr: Expr) : Expr option =
+    member this.Evaluate (expr: expr) : expr option =
       match expr with
       | Nil | Boolean _ | Number _  -> Some expr
       | Symbol k                    -> this.getValue k
