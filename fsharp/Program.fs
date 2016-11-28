@@ -21,9 +21,11 @@ module Orelang =
 
   type expr = Nil
             | Boolean of bool
-            | Number of decimal
+            | Number of int
             | Symbol of string
-            | Function of string * expr list
+            | Call of string * expr list
+            | Operator of operator_t
+  and operator_t = delegate of expr list -> expr option
 
   module Expr =
     let ToBoolean e =
@@ -45,7 +47,7 @@ module Orelang =
 
     let private nil = pstring "nil" >>% Nil
 
-    let private number = regex "[+-]?[0-9]+" |>> (Decimal.Parse >> Number)
+    let private number = regex "[+-]?[0-9]+" |>> (Int32.Parse >> Number)
 
     let private symbol = regex "[a-zA-Z0-9\+\-\*\/\=\!]+"
 
@@ -54,7 +56,7 @@ module Orelang =
 
     let private command expr =
       pstring "(" >>. spaces >>. symbol .>> spaces .>>. sepEndBy expr spaces .>> pstring ")"
-      |>> fun (symbol, args) -> Function (symbol, args)
+      |>> fun (op, args) -> Call (op, args)
 
     let private expr =
       fix <| fun expr -> token <|> command expr
@@ -71,9 +73,68 @@ module Orelang =
   let ParseFromFile (path: string) : Result<expr, ErrorKind> =
     ParseFromString <| System.IO.File.ReadAllText path
 
-
-  type Engine() =
+  type Engine() as this =
     let env = new Dictionary<string, expr>()
+    do
+      let defineOperator name f = env.Add(name, Operator(operator_t(f)))
+
+      defineOperator "set" (fun args -> maybe {
+        let! k = List.tryItem 0 args >>= Expr.ToSymbol
+        let! v = List.tryItem 1 args >>= this.Evaluate
+        this.setValue k v
+        return Nil
+      })
+
+      defineOperator "until" (fun args ->
+        let rec f pred expr =
+          match this.Evaluate pred with
+          | Some(Boolean true) -> ()
+          | _ -> this.Evaluate expr |> ignore
+                 f pred expr
+        maybe {
+          let! pred = List.tryItem 0 args
+          let! expr = List.tryItem 1 args
+          f pred expr
+          return Nil
+      })
+
+      defineOperator "step" (fun args ->
+        let rec eval_step lines =
+          let ret = this.Evaluate(List.head lines)
+          match (List.tail lines) with
+          | [] -> ret
+          | tl -> eval_step tl
+        eval_step args)
+
+      defineOperator "print" (fun args -> maybe {
+        let! arg = List.tryHead args >>= this.Evaluate
+        printfn "%A" arg
+        return Nil
+      })
+
+      defineOperator "quote" (fun args -> List.tryHead args)
+
+      defineOperator "+" (fun args ->
+        args |> List.fold (fun acc x -> maybe {
+          let! acc = acc
+          let! x = x |> this.Evaluate >>= Expr.ToNumber
+          return acc + x
+        }) (Some 0)
+        |> Option.map Number)
+
+      defineOperator "*" (fun args ->
+        args |> List.fold (fun acc x -> maybe {
+          let! acc = acc
+          let! x = x |> this.Evaluate >>= Expr.ToNumber
+          return acc * x
+        }) (Some 1)
+        |> Option.map Number)
+
+      defineOperator "=" (fun args -> maybe {
+        let! lhs = List.tryItem 0 args >>= this.Evaluate >>= Expr.ToNumber
+        let! rhs = List.tryItem 1 args >>= this.Evaluate >>= Expr.ToNumber
+        return Boolean (lhs = rhs)
+      })
 
     member private this.getValue k =
       match env.TryGetValue(k) with
@@ -84,68 +145,19 @@ module Orelang =
       env.Remove(k) |> ignore
       env.Add(k, v)
 
-    member this.evalFunc name args =
-      match name with
-      | "set" -> maybe {
-          let! k = List.tryItem 0 args >>= Expr.ToSymbol
-          let! v = List.tryItem 1 args >>= this.Evaluate
-          this.setValue k v
-          return Nil
-        }
-
-      | "until" ->
-         let rec f pred expr =
-           match this.Evaluate pred with
-           | Some(Boolean true) -> ()
-           | _ -> this.Evaluate expr |> ignore
-                  f pred expr
-         maybe {
-           let! pred = List.tryItem 0 args
-           let! expr = List.tryItem 1 args
-           f pred expr
-           return Nil
-         }
-
-      | "step" ->
-        let rec eval_step lines =
-          let ret = this.Evaluate(List.head lines)
-          match (List.tail lines) with
-          | [] -> ret
-          | tl -> eval_step tl
-        eval_step args
-
-      | "+" ->
-        args
-        |> List.fold (fun acc x -> maybe {
-             let! acc = acc
-             let! x = x |> this.Evaluate >>= Expr.ToNumber
-             return acc + x
-           }) (Some(decimal 0))
-        |> Option.map Number
-
-      | "=" -> maybe {
-          let! lhs = List.tryItem 0 args >>= this.Evaluate >>= Expr.ToNumber
-          let! rhs = List.tryItem 1 args >>= this.Evaluate >>= Expr.ToNumber
-          return Boolean (lhs = rhs)
-        }
-
-      | "print" -> maybe {
-          let! arg = List.tryItem 0 args >>= this.Evaluate
-          printfn "%A" arg
-          return Nil
-        }
-
-      | "quote" -> List.tryHead args
-
-      | s -> s |> this.getValue
-             >>= Expr.ToSymbol
-             >>= (fun s -> this.evalFunc s args)
+    member this.evalFunc op args =
+      this.getValue op >>= (fun op ->
+        match op with
+        | Symbol op     -> this.evalFunc op args
+        | Operator op   -> op.Invoke(args)
+        | _             -> None)
 
     member this.Evaluate (expr: expr) : expr option =
       match expr with
       | Nil | Boolean _ | Number _  -> Some expr
       | Symbol k                    -> this.getValue k
-      | Function (name, args)       -> this.evalFunc name args
+      | Call (name, args)           -> this.evalFunc name args
+      | Operator _                  -> Some expr
 
     member this.print() =
       printfn "env: %A" env
@@ -160,7 +172,6 @@ let main _ =
     | Result.OK expr ->
       let engine = Orelang.Engine()
       printfn "result: %A" <| engine.Evaluate expr
-      engine.print()
 
   let testString s =
     printfn "\nstring: %s" s
@@ -175,7 +186,7 @@ let main _ =
   testString "(+ 1 2 (* 3 4))"
   testString "(set i 10)"
   testString "(until (= 1 1) (set i 10))"
-  testString "(step (set i (quote hoge)) (print i))"
+  testString "(step (set i (quote hoge)) i)"
   testString "(step (set i (quote (+ 1 2 3))) (print i))"
   testFile   "example_sum.ore"
   testFile   "example_firstclass_op.ore"
