@@ -96,14 +96,13 @@ module Orelang =
       | "until" ->
          let rec f pred expr =
            match this.Evaluate pred with
-           | Some(Boolean true) -> Some Nil
-           | _ ->
-              this.Evaluate expr |> ignore
-              f pred expr
+           | Some(Boolean true) -> ()
+           | _ -> this.Evaluate expr |> ignore
+                  f pred expr
          maybe {
            let! pred = List.tryItem 0 args
            let! expr = List.tryItem 1 args
-           f pred expr |> ignore
+           f pred expr
            return Nil
          }
 
@@ -144,30 +143,26 @@ module Orelang =
     member this.print() =
       printfn "env: %A" env
 
+
 [<EntryPoint>]
 let main _ =
-  let testString s =
-    printfn "\nstring: %s" s
-    match Orelang.ParseFromString s with
+  let testEval expr =
+    match expr with
     | Result.Error msg ->
       printfn "failed to parse: %A\n" msg
     | Result.OK expr ->
       let engine = Orelang.Engine()
-      let result = engine.Evaluate expr
-      printfn "result: %A" result
+      printfn "result: %A" <| engine.Evaluate expr
       engine.print()
+
+  let testString s =
+    printfn "\nstring: %s" s
+    testEval <| Orelang.ParseFromString s
 
   let testFile filename =
     printfn "\nfile: %s" filename
     let repo_root = Directory.GetParent(__SOURCE_DIRECTORY__).ToString()
-    match Orelang.ParseFromFile <| repo_root + "/examples/" + filename with
-    | Result.Error msg ->
-      printfn "failed to parse: %A\n" msg
-    | Result.OK expr ->
-      let engine = Orelang.Engine()
-      let result = engine.Evaluate expr
-      printfn "result: %A" result
-      engine.print()
+    testEval (Orelang.ParseFromFile <| repo_root + "/examples/" + filename)
 
   testString "nil"
   testString "(+ 1 2 (* 3 4))"
