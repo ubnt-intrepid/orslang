@@ -38,6 +38,9 @@ module Orelang =
     let ToSymbol e =
         match e with | Symbol s -> Some s | _ -> None
 
+    let ToArguments e =
+        match e with | Arguments a -> Some a | _ -> None
+
   module P =
     open FParsec
     open FParsec.Primitives
@@ -95,6 +98,11 @@ module Orelang =
 
   type Engine() as this =
     let env = new Dictionary<string, expr>()
+
+    new(env: Dictionary<string, expr>) =
+      Engine(new Dictionary<string, expr>(env))
+
+    with
     do
       let defineOperator name f = env.Add(name, Operator(operator_t(f)))
 
@@ -156,6 +164,16 @@ module Orelang =
         return Boolean (lhs = rhs)
       })
 
+      defineOperator "lambda" (fun args -> maybe {
+        let! sym = List.tryItem 0 args >>= Expr.ToArguments
+        let! expr = List.tryItem 1 args
+        let local = new Engine(env) // clone all values
+        printf "[debug] %A" local
+        List.zip sym args |> List.map (fun (s,a) -> local.setValue s a) |> List.fold (fun acc d -> acc) [] |> ignore
+        let! result = local.Evaluate expr
+        return result
+      })
+
     member private this.getValue k =
       match env.TryGetValue(k) with
       | (true, v) -> Some v
@@ -210,6 +228,7 @@ let main _ =
   testString "(step (set i (quote (+ 1 2 3))) (print i))"
   testFile   "example_sum.ore"
   testFile   "example_firstclass_op.ore"
+  testFile   "example_lambda.ore"
 
   // failure case
   // test_string   "(+ 1 2 (* 3 4)))"
