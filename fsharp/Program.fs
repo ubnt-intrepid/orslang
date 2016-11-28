@@ -25,7 +25,7 @@ module Orelang =
             | Symbol of string
             | Call of string * expr list
             | Operator of operator_t
-            | Arguments of string list
+            | Lambda of string list * expr
   and operator_t = delegate of expr list -> expr option
 
   module Expr =
@@ -37,9 +37,6 @@ module Orelang =
 
     let ToSymbol e =
         match e with | Symbol s -> Some s | _ -> None
-
-    let ToArguments e =
-        match e with | Arguments a -> Some a | _ -> None
 
   module P =
     open FParsec
@@ -61,23 +58,26 @@ module Orelang =
     let private command expr =
       pstring "(" >>. spaces >>. symbol .>> spaces .>>. expr .>> spaces .>>. sepEndBy expr spaces .>> pstring ")"
       >>= fun ((op, arg), args) ->
+          // TODO: simplify
           match op with
           | "lambda" ->
              match arg with
              | Call (hd, tl) ->
-               let tl = tl |> List.map Expr.ToSymbol
-                           |> List.fold (fun acc x -> maybe {
-                                           let! acc = acc
-                                           let! x = x
-                                           return List.append acc [x]
-                                        }) (Some [])
-               match tl with
-               | Some tl ->
-                 try
-                   preturn (Call ("lambda", [ Arguments (hd::tl); List.head args ]))
-                 with
-                 | _ -> fail "lambda: failed to get expr"
-               | None -> fail "lambda: cannot retrive remaining symbols"
+               let r = maybe {
+                 let! tl =
+                   tl
+                   |> List.map Expr.ToSymbol
+                   |> List.fold (fun acc x -> maybe {
+                                   let! acc = acc
+                                   let! x = x
+                                   return List.append acc [x]
+                                }) (Some [])
+                 let! a = args |> List.tryHead
+                 return Lambda (hd::tl, a)
+               }
+               try preturn r.Value
+               with | _ -> fail "failed to parse lambda"
+
              | _ -> fail "lambda: the first argument is not a list of symbols"
           | _ -> preturn (Call (op, arg::args))
 
@@ -99,80 +99,65 @@ module Orelang =
   type Engine() as this =
     let env = new Dictionary<string, expr>()
 
-    new(env: Dictionary<string, expr>) =
-      Engine(new Dictionary<string, expr>(env))
-
-    with
     do
       let defineOperator name f = env.Add(name, Operator(operator_t(f)))
 
-      defineOperator "set" (fun args -> maybe {
+      defineOperator "set" <| fun args -> maybe {
         let! k = List.tryItem 0 args >>= Expr.ToSymbol
         let! v = List.tryItem 1 args >>= this.Evaluate
         this.setValue k v
         return Nil
-      })
+      }
 
-      defineOperator "until" (fun args ->
+      defineOperator "until" <| fun args ->
         let rec f pred expr =
-          match this.Evaluate pred with
-          | Some(Boolean true) -> ()
-          | _ -> this.Evaluate expr |> ignore
-                 f pred expr
+          match this.Evaluate pred >>= Expr.ToBoolean with
+          | Some true -> ()
+          | _         -> this.Evaluate expr |> ignore; f pred expr
         maybe {
           let! pred = List.tryItem 0 args
           let! expr = List.tryItem 1 args
           f pred expr
           return Nil
-      })
+      }
 
-      defineOperator "step" (fun args ->
+      defineOperator "step" <| fun args ->
         let rec eval_step lines =
           let ret = this.Evaluate(List.head lines)
           match (List.tail lines) with
           | [] -> ret
           | tl -> eval_step tl
-        eval_step args)
+        eval_step args
 
-      defineOperator "print" (fun args -> maybe {
+      defineOperator "print" <| fun args -> maybe {
         let! arg = List.tryHead args >>= this.Evaluate
         printfn "%A" arg
         return Nil
-      })
+      }
 
-      defineOperator "quote" (fun args -> List.tryHead args)
+      defineOperator "quote" <| fun args -> List.tryHead args
 
-      defineOperator "+" (fun args ->
+      defineOperator "+" <| fun args ->
         args |> List.fold (fun acc x -> maybe {
           let! acc = acc
           let! x = x |> this.Evaluate >>= Expr.ToNumber
           return acc + x
         }) (Some 0)
-        |> Option.map Number)
+        |> Option.map Number
 
-      defineOperator "*" (fun args ->
+      defineOperator "*" <| fun args ->
         args |> List.fold (fun acc x -> maybe {
           let! acc = acc
           let! x = x |> this.Evaluate >>= Expr.ToNumber
           return acc * x
         }) (Some 1)
-        |> Option.map Number)
+        |> Option.map Number
 
-      defineOperator "=" (fun args -> maybe {
+      defineOperator "=" <| fun args -> maybe {
         let! lhs = List.tryItem 0 args >>= this.Evaluate >>= Expr.ToNumber
         let! rhs = List.tryItem 1 args >>= this.Evaluate >>= Expr.ToNumber
         return Boolean (lhs = rhs)
-      })
-
-      defineOperator "lambda" (fun args -> maybe {
-        let! sym = List.tryItem 0 args >>= Expr.ToArguments
-        let! expr = List.tryItem 1 args
-        let local = new Engine(env) // clone all values
-        printf "[debug] %A" local
-        List.zip sym args |> List.map (fun (s,a) -> local.setValue s a) |> List.fold (fun acc d -> acc) [] |> ignore
-        let! result = local.Evaluate expr
-        return result
-      })
+      }
 
     member private this.getValue k =
       match env.TryGetValue(k) with
@@ -186,13 +171,20 @@ module Orelang =
     member this.evalFunc op args =
       this.getValue op >>= (fun op ->
         match op with
-        | Symbol op     -> this.evalFunc op args
-        | Operator op   -> op.Invoke(args)
-        | _             -> None)
+        | Symbol op          -> this.evalFunc op args
+        | Lambda (syn, expr) -> this.evalLambda syn expr args
+        | Operator op        -> op.Invoke(args)
+        | _                  -> None)
+
+    member this.evalLambda syn expr args =
+      // FIX: use local environment
+      List.zip syn args |> List.map (fun (k,v) -> this.setValue k v) |> List.fold (fun acc _ -> acc) |> ignore
+      this.Evaluate expr
 
     member this.Evaluate (expr: expr) : expr option =
       match expr with
       | Nil | Boolean _ | Number _  -> Some expr
+      | Lambda _                    -> Some expr
       | Symbol k                    -> this.getValue k
       | Call (name, args)           -> this.evalFunc name args
       | Operator _                  -> Some expr

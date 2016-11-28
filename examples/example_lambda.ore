@@ -1,3 +1,4 @@
 (step
-  (set multiply (lambda (a b) (* a b)))
-	(print (multiply 5 5)))
+  (set multiply (quote (lambda (a b) (* a b))))
+	(print (multiply 5 5))
+  multiply)
