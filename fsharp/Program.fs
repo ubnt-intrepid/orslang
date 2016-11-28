@@ -25,6 +25,7 @@ module Orelang =
             | Symbol of string
             | Call of string * expr list
             | Operator of operator_t
+            | Arguments of string list
   and operator_t = delegate of expr list -> expr option
 
   module Expr =
@@ -55,8 +56,27 @@ module Orelang =
       spaces >>. (nil <|> number <|> (symbol |>> Symbol)) .>> spaces
 
     let private command expr =
-      pstring "(" >>. spaces >>. symbol .>> spaces .>>. sepEndBy expr spaces .>> pstring ")"
-      |>> fun (op, args) -> Call (op, args)
+      pstring "(" >>. spaces >>. symbol .>> spaces .>>. expr .>> spaces .>>. sepEndBy expr spaces .>> pstring ")"
+      >>= fun ((op, arg), args) ->
+          match op with
+          | "lambda" ->
+             match arg with
+             | Call (hd, tl) ->
+               let tl = tl |> List.map Expr.ToSymbol
+                           |> List.fold (fun acc x -> maybe {
+                                           let! acc = acc
+                                           let! x = x
+                                           return List.append acc [x]
+                                        }) (Some [])
+               match tl with
+               | Some tl ->
+                 try
+                   preturn (Call ("lambda", [ Arguments (hd::tl); List.head args ]))
+                 with
+                 | _ -> fail "lambda: failed to get expr"
+               | None -> fail "lambda: cannot retrive remaining symbols"
+             | _ -> fail "lambda: the first argument is not a list of symbols"
+          | _ -> preturn (Call (op, arg::args))
 
     let private expr =
       fix <| fun expr -> token <|> command expr
