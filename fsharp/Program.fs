@@ -27,28 +27,27 @@ type expr =
 and operator_t = delegate of expr list -> expr option
 
 module Expr =
-    let ToBoolean e =
-        match e with
+    let IsNil = function
+        | Nil -> true
+        | _ -> false
+
+    let ToBoolean = function
         | Boolean b -> Some b
         | _ -> None
 
-    let ToNumber e =
-        match e with
+    let ToNumber = function
         | Number d -> Some d
         | _ -> None
 
-    let ToSymbol e =
-        match e with
+    let ToSymbol = function
         | Symbol s -> Some s
         | _ -> None
 
 module Parser =
+    open System
     open FParsec
     open FParsec.Primitives
     open FParsec.CharParsers
-    open System
-
-    type Result = Result
 
     let private nil = pstring "nil" >>% Nil
     let private number = regex "[+-]?[0-9]+" |>> (Int32.Parse >> Number)
@@ -83,13 +82,13 @@ module Parser =
 
     let private expr = fix <| fun expr -> token <|> command expr
 
-    let Parse s =
-        match run (spaces >>. expr .>> spaces .>> eof) s with
-        | Success(r, _, _) -> OK r
+    let ParseFromString s =
+        let parser = spaces >>. expr .>> spaces .>> eof
+        match run parser s with
+        | Success(r, _, _) -> Result.OK r
         | Failure(msg, _, _) -> Result.Error msg
 
-    let ParseFromString(s : string) : Result<expr, string> = Parse s
-    let ParseFromFile(path : string) : Result<expr, string> =
+    let ParseFromFile path =
         ParseFromString <| System.IO.File.ReadAllText path
 
 type engine() =
@@ -200,24 +199,24 @@ type engine() =
 
     member this.print() = printfn "env: %A" env
 
+let testEval expr =
+    match expr with
+    | Result.Error msg -> printfn "failed to parse: %A\n" msg
+    | Result.OK expr ->
+        let engine = engine().Default()
+        printfn "result: %A" <| engine.Evaluate expr
+
+let testString s =
+    printfn "\nstring: %s" s
+    testEval <| Parser.ParseFromString s
+
+let testFile filename =
+    printfn "\nfile: %s" filename
+    let repo_root = Directory.GetParent(__SOURCE_DIRECTORY__).ToString()
+    testEval (Parser.ParseFromFile <| repo_root + "/examples/" + filename)
+
 [<EntryPoint>]
 let main _ =
-    let testEval expr =
-        match expr with
-        | Result.Error msg -> printfn "failed to parse: %A\n" msg
-        | Result.OK expr ->
-            let engine = engine().Default()
-            printfn "result: %A" <| engine.Evaluate expr
-
-    let testString s =
-        printfn "\nstring: %s" s
-        testEval <| Parser.ParseFromString s
-
-    let testFile filename =
-        printfn "\nfile: %s" filename
-        let repo_root = Directory.GetParent(__SOURCE_DIRECTORY__).ToString()
-        testEval (Parser.ParseFromFile <| repo_root + "/examples/" + filename)
-
     testString "nil"
     testString "(+ 1 2 (* 3 4))"
     testString "(set i 10)"
