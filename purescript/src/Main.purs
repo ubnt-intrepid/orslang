@@ -1,9 +1,24 @@
 module Main where
 
-import Prelude
 import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Console (CONSOLE, log)
+import Control.Monad.Eff.Console (CONSOLE, logShow)
+import Data.Either (Either(..))
+import Test.Assert (ASSERT, assert')
+import Text.Parsing.Parser (Parser, runParser)
+import Text.Parsing.Parser.String (string)
+import Prelude hiding (between, when)
 
-main :: forall e. Eff (console :: CONSOLE | e) Unit
+
+parseTest :: forall s a eff. (Show a, Eq a) => s -> a -> Parser s a -> Eff (console :: CONSOLE, assert :: ASSERT | eff) Unit
+parseTest input expected p =
+  case runParser input p of
+    Right actual -> do
+      assert' ("expected: " <> show expected <> ", actual: " <> show actual) (expected == actual)
+      logShow actual
+    Left err ->
+      assert' ("error: " <> show err) false
+
+
+main :: forall eff. Eff (console :: CONSOLE, assert :: ASSERT | eff) Unit
 main = do
-  log "Hello sailor!"
+  parseTest "abcd" "abcd" $ string "abcd"

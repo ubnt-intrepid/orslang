@@ -12,6 +12,7 @@
     "purescript-parsing": "^3.0.1"
   },
   "devDependencies": {
-    "purescript-psci-support": "^2.0.0"
+    "purescript-psci-support": "^2.0.0",
+    "purescript-assert": "^2.0.0"
   }
 }
