@@ -175,12 +175,11 @@ type engine() =
         env.Add(k, v)
 
     member this.evalFunc op args =
-        this.getValue op >>= (fun op ->
-        match op with
-        | Symbol op -> this.evalFunc op args
-        | Lambda(syn, expr) -> this.evalLambda syn expr args
-        | Operator op -> op.Invoke(args)
-        | _ -> None)
+        this.getValue op >>= function
+            | Symbol op         -> this.evalFunc op args
+            | Lambda(syn, expr) -> this.evalLambda syn expr args
+            | Operator op       -> op.Invoke(args)
+            | _                 -> None
 
     member this.evalLambda syn expr args =
         let local_eng = engine()
