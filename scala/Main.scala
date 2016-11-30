@@ -46,11 +46,13 @@ object ExprParser extends RegexParsers {
     from_str(Source.fromFile(path).mkString)
 }
 
+// base class to represent a engine.
+// TODO: hide all properties from derived classes
 class Engine {
-  var variables = HashMap[String, Expr]()
-  var operators = HashMap[String, (Seq[Expr] => Either[String, Expr])]()
+  private val variables = HashMap[String, Expr]()
+  private val operators = HashMap[String, (Seq[Expr] => Either[String, Expr])]()
 
-  def evaluate(expr: Expr): Either[String, Expr] = {
+  def evaluate(expr: Expr): Either[String, Expr] =
     expr match {
       case Bool(_) | Number(_) => Right(expr)
 
@@ -60,77 +62,78 @@ class Engine {
       case List(Symbol(op) +: args) =>
         operators.get(op).toRight(s"undefined operator: `${op}`").map(op => op(args)).joinRight
     }
-  }
+
+  def put_variable(sym: String, expr: Expr) =
+    variables.put(sym, expr)
+
+  def def_operator (name: String) (op: Seq[Expr] => Either[String, Expr]) =
+    operators.put(name, op)
 }
 
 class OrelangEngine extends Engine {
-  operators.put("step", expr => {
-    expr.map(e => evaluate(e))
-        .fold(Right(Nil))((acc, e) => acc.map(_ => e).joinRight)
-  })
+  def_operator("step") {
+    case expr =>
+      expr.map(e => evaluate(e))
+          .fold(Right(Nil))((acc, e) => acc.map(_ => e).joinRight)
+  }
 
-  operators.put("until", expr => {
-    expr match {
-      case pred +: e +: _ => {
-        var res: Either[String,Expr] = Right(Nil)
-        val b = new Breaks
-        b.breakable {
-          while (true) {
-            evaluate(pred) match {
-              case Right(Bool(true)) => b.break
-              case Right(_) => {
-                evaluate(e) match {
-                  case Right(_) => ()
-                  case Left(e) => { res = Left(e); b.break }
-                }
+  def_operator("until") {
+    case pred +: expr => {
+      var res: Either[String,Expr] = Right(Nil)
+      val b = new Breaks
+      b.breakable {
+        while (true) {
+          res = evaluate(pred)
+          res match {
+            case Right(Bool(true)) => b.break
+            case Right(_) => {
+              res = expr.map(e => evaluate(e))
+                        .fold(Right(Nil))((acc, e) => acc.map(_ => e).joinRight)
+              if (res.isLeft) {
+                b.break
               }
-              case Left(e) => { res = Left(e); b.break }
             }
+            case Left(e) => { b.break }
           }
         }
-        res
       }
-      case _ => Left("invalid arguments")
+      res
     }
-  })
+    case _ => Left("invalid arguments")
+  }
 
-  operators.put("set", expr => {
-    expr match {
-      case Symbol(sym) +: e +: _ => {
-        evaluate(e).right.map(e => { variables.put(sym, e); Nil })
+  def_operator("set") {
+    case Symbol(sym) +: e +: _ => {
+      evaluate(e).right.map(e => { put_variable(sym, e); Nil })
+    }
+    case _ => Left("[set] invalid arguments")
+  }
+
+  def_operator("=") {
+    case e1 +: e2 +: _ => {
+      (evaluate(e1), evaluate(e2)) match {
+        case (Right(Number(v1)), Right(Number(v2))) => Right(Bool(v1 == v2))
+        case _ => Left("[=] cannot substitute")
       }
-      case _ => Left("[set] invalid arguments")
     }
-  })
+    case _ => Left("invalid arguments")
+  }
 
-  operators.put("=", expr => {
-    expr match {
-      case e1 +: e2 +: _ => {
-        (evaluate(e1), evaluate(e2)) match {
-          case (Right(Number(v1)), Right(Number(v2))) => Right(Bool(v1 == v2))
-          case _ => Left("[=] cannot substitute")
-        }
+  def_operator("+") {
+    case e1 +: e2 +: _ => {
+      (evaluate(e1), evaluate(e2)) match {
+        case (Right(Number(v1)), Right(Number(v2))) => Right(Number(v1 + v2))
+        case _ => Left("[+] cannot substitute")
       }
-      case _ => Left("invalid arguments")
     }
-  })
+    case _ => Left("invalid arguments")
+  }
 
-  operators.put("+", expr => {
-    expr match {
-      case e1 +: e2 +: _ => {
-        (evaluate(e1), evaluate(e2)) match {
-          case (Right(Number(v1)), Right(Number(v2))) => Right(Number(v1 + v2))
-          case _ => Left("[+] cannot substitute")
-        }
-      }
-      case _ => Left("invalid arguments")
-    }
-  })
-
-  operators.put("print", expr => {
-    println("[print] ", evaluate(expr.head))
-    Right(expr.head)
-  })
+  def_operator("print") {
+    case hd +: _ =>
+      println("[print] ", evaluate(hd))
+      Right(Nil)
+  }
 }
 
 object Main {
