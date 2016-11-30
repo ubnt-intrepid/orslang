@@ -1,5 +1,6 @@
-import scala.util.parsing.combinator._
+import scala.collection.mutable.HashMap
 import scala.io.Source
+import scala.util.parsing.combinator._
 
 sealed abstract trait Expr
 case class Bool(b: Boolean) extends Expr
@@ -44,10 +45,27 @@ object ExprParser extends RegexParsers {
 }
 
 class Engine {
-  var variables = Map[String, Expr]()
-  var operators = Map[String, (Expr => Either[String, Expr])]()
+  var variables = HashMap[String, Expr]()
+  var operators = HashMap[String, (Seq[Expr] => Either[String, Expr])]()
 
-  def evaluate(expr: Expr): Either[String, Expr] = Left("not implemented")
+  operators.put("print", expr => {
+    println("[print] ", expr)
+    Right(expr.head)
+  })
+
+  def evaluate(expr: Expr): Either[String, Expr] = {
+    expr match {
+      case Bool(_) | Number(_) => Right(expr)
+      case Symbol(s) => variables.get(s) match {
+        case Some(e) => Right(e)
+        case None => Left(s"undefined symbol: `${s}`")
+      }
+      case List(Symbol(op) +: args) => operators.get(op) match {
+        case Some(op) => op(args)
+        case None => Left(s"undefined operator: `${op}`")
+      }
+    }
+  }
 }
 
 object Main {
@@ -60,5 +78,6 @@ object Main {
 
     val eng = new Engine()
     println(ExprParser.from_str("42").right.map(eng.evaluate(_)).joinRight)
+    println(ExprParser.from_str("(print 42)").right.map(eng.evaluate(_)).joinRight)
   }
 }
