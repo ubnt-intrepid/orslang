@@ -1,5 +1,6 @@
 // Program.fs
 open System
+open System.Collections.Generic
 
 let rec fix f x = f (fix f) x
 
@@ -22,6 +23,7 @@ type expression = Boolean of bool
                 | Number of int
                 | Symbol of string
                 | List of expression list
+
 
 module Parser =
   open FParsec
@@ -50,15 +52,27 @@ module Parser =
       | ParserResult.Failure (msg, _, _) -> result.Failure msg
 
 
+type engine() =
+    let ops = Dictionary<string, operator>()
+    let vars = Dictionary<string, expression>()
+
+    member this.Evaluate expr = Failure "not implemented"
+and
+    operator = delegate of expression list -> result<expression, string>
+
+
 [<EntryPoint>]
 let main _ =
-   printfn "%A" <| Parser.FromString "hoge"
-   printfn "%A" <| Parser.FromString "10"
-   printfn "%A" <| Parser.FromString "false"
-   printfn "%A" <| Parser.FromString "(a b c + - * / _ !)"
-   printfn "%A" <| Parser.FromString "(abc/def a10 (2 3 hoge))"
-   printfn "%A" <| Parser.FromString "( 10 fa1   \n 10  )"
+    printfn "%A" <| Parser.FromString "hoge"
+    printfn "%A" <| Parser.FromString "10"
+    printfn "%A" <| Parser.FromString "false"
+    printfn "%A" <| Parser.FromString "(a b c + - * / _ !)"
+    printfn "%A" <| Parser.FromString "(abc/def a10 (2 3 hoge))"
+    printfn "%A" <| Parser.FromString "( 10 fa1   \n 10  )"
 
-   printfn "%A" <| Parser.FromString "(10a)"
-   printfn "%A" <| Parser.FromString "a b c"
-   0
+    printfn "%A" <| Parser.FromString "(10a)"
+    printfn "%A" <| Parser.FromString "a b c"
+
+    let eng = engine()
+    Parser.FromString "(+ 1 2)" |> eng.Evaluate |> printfn "%A"
+    0
