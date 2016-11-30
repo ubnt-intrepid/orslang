@@ -53,14 +53,12 @@ class Engine {
   def evaluate(expr: Expr): Either[String, Expr] = {
     expr match {
       case Bool(_) | Number(_) => Right(expr)
-      case Symbol(s) => variables.get(s) match {
-        case Some(e) => Right(e)
-        case None => Left(s"undefined symbol: `${s}`")
-      }
-      case List(Symbol(op) +: args) => operators.get(op) match {
-        case Some(op) => op(args)
-        case None => Left(s"undefined operator: `${op}`")
-      }
+
+      case Symbol(s) =>
+        variables.get(s).toRight(s"undefined symbol: `${s}`")
+
+      case List(Symbol(op) +: args) =>
+        operators.get(op).toRight(s"undefined operator: `${op}`").map(op => op(args)).joinRight
     }
   }
 }
@@ -68,10 +66,7 @@ class Engine {
 class OrelangEngine extends Engine {
   operators.put("step", expr => {
     expr.map(e => evaluate(e))
-        .fold(Right(Nil))((acc, e) => acc match {
-            case Right(_) => e
-            case Left(err) => Left(err)
-          })
+        .fold(Right(Nil))((acc, e) => acc.map(_ => e).joinRight)
   })
 
   operators.put("until", expr => {
@@ -102,10 +97,7 @@ class OrelangEngine extends Engine {
   operators.put("set", expr => {
     expr match {
       case Symbol(sym) +: e +: _ => {
-        evaluate(e) match {
-          case Right(e) => { variables.put(sym, e); Right(Nil) }
-          case Left(err) => Left(err)
-        }
+        evaluate(e).right.map(e => { variables.put(sym, e); Nil })
       }
       case _ => Left("[set] invalid arguments")
     }
