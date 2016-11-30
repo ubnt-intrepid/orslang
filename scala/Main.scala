@@ -43,6 +43,12 @@ object ExprParser extends RegexParsers {
     from_str(Source.fromFile(path).mkString)
 }
 
+class Engine {
+  var variables = Map[String, Expr]()
+  var operators = Map[String, (Expr => Either[String, Expr])]()
+
+  def evaluate(expr: Expr): Either[String, Expr] = Left("not implemented")
+}
 
 object Main {
   def main(args: Array[String]) = {
@@ -51,5 +57,8 @@ object Main {
     println(ExprParser.from_str("hoge"))
     println(ExprParser.from_str("(+ 1 (+ sum -1))"))
     println(ExprParser.from_file("../examples/example_sum.ore"))
+
+    val eng = new Engine()
+    println(ExprParser.from_str("42").right.map(eng.evaluate(_)).joinRight)
   }
 }
