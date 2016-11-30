@@ -136,17 +136,15 @@ class OrelangEngine extends Engine {
   }
 }
 
-object Main {
-  def main(args: Array[String]) = {
-    // println(ExprParser.from_str("false"))
-    // println(ExprParser.from_str("-10"))
-    // println(ExprParser.from_str("hoge"))
-    // println(ExprParser.from_str("(+ 1 (+ sum -1))"))
-    // println(ExprParser.from_file("../examples/example_sum.ore"))
+object Main extends App {
+  // println(ExprParser.from_str("false"))
+  // println(ExprParser.from_str("-10"))
+  // println(ExprParser.from_str("hoge"))
+  // println(ExprParser.from_str("(+ 1 (+ sum -1))"))
+  // println(ExprParser.from_file("../examples/example_sum.ore"))
 
-    val eng = new OrelangEngine()
-    // println(ExprParser.from_str("42").right.map(eng.evaluate(_)).joinRight)
-    // println(ExprParser.from_str("(print 42)").right.map(eng.evaluate(_)).joinRight)
-    println(ExprParser.from_file("../examples/example_sum.ore").right.map(eng.evaluate(_)).joinRight)
-  }
+  val eng = new OrelangEngine()
+  // println(ExprParser.from_str("42").right.map(eng.evaluate(_)).joinRight)
+  // println(ExprParser.from_str("(print 42)").right.map(eng.evaluate(_)).joinRight)
+  println(ExprParser.from_file("../examples/example_sum.ore").right.map(eng.evaluate(_)).joinRight)
 }
