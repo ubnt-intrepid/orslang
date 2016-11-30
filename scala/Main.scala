@@ -1,8 +1,10 @@
 import scala.collection.mutable.HashMap
 import scala.io.Source
+import scala.util.control.Breaks
 import scala.util.parsing.combinator._
 
 sealed abstract trait Expr
+case object Nil extends Expr
 case class Bool(b: Boolean) extends Expr
 case class Number(n: Int) extends Expr
 case class Symbol(s: String) extends Expr
@@ -48,6 +50,70 @@ class Engine {
   var variables = HashMap[String, Expr]()
   var operators = HashMap[String, (Seq[Expr] => Either[String, Expr])]()
 
+  operators.put("step", expr => {
+    expr.map(e => evaluate(e))
+        .fold(Right(Nil))((acc, e) => acc match {
+            case Right(_) => e
+            case Left(err) => Left(err)
+          })
+  })
+
+  operators.put("until", expr => {
+    expr match {
+      case pred +: e +: _ => {
+        var res: Either[String,Expr] = Right(Nil)
+        val b = new Breaks
+        b.breakable {
+          while (true) {
+            evaluate(pred) match {
+              case Right(Bool(true)) => b.break
+              case Right(_) => {
+                evaluate(e) match {
+                  case Right(_) => ()
+                  case Left(e) => { res = Left(e); b.break }
+                }
+              }
+              case Left(e) => { res = Left(e); b.break }
+            }
+          }
+        }
+        res
+      }
+      case _ => Left("invalid arguments")
+    }
+  })
+
+  operators.put("set", expr => {
+    expr match {
+      case Symbol(sym) +: e +: _ => { variables.put(sym, e); Right(Nil) }
+      case _ => Left("[set] invalid arguments")
+    }
+  })
+
+  operators.put("=", expr => {
+    expr match {
+      case e1 +: e2 +: _ => {
+        (evaluate(e1), evaluate(e2)) match {
+          case (Right(Number(v1)), Right(Number(v2))) => Right(Bool(v1 == v2))
+          case _ => Left("cannot substitute")
+        }
+      }
+      case _ => Left("invalid arguments")
+    }
+  })
+
+  operators.put("+", expr => {
+    expr match {
+      case e1 +: e2 +: _ => {
+        (evaluate(e1), evaluate(e2)) match {
+          case (Right(Number(v1)), Right(Number(v2))) => Right(Number(v1 + v2))
+          case _ => Left("cannot substitute")
+        }
+      }
+      case _ => Left("invalid arguments")
+    }
+  })
+
   operators.put("print", expr => {
     println("[print] ", expr)
     Right(expr.head)
@@ -70,14 +136,15 @@ class Engine {
 
 object Main {
   def main(args: Array[String]) = {
-    println(ExprParser.from_str("false"))
-    println(ExprParser.from_str("-10"))
-    println(ExprParser.from_str("hoge"))
-    println(ExprParser.from_str("(+ 1 (+ sum -1))"))
-    println(ExprParser.from_file("../examples/example_sum.ore"))
+    // println(ExprParser.from_str("false"))
+    // println(ExprParser.from_str("-10"))
+    // println(ExprParser.from_str("hoge"))
+    // println(ExprParser.from_str("(+ 1 (+ sum -1))"))
+    // println(ExprParser.from_file("../examples/example_sum.ore"))
 
     val eng = new Engine()
-    println(ExprParser.from_str("42").right.map(eng.evaluate(_)).joinRight)
-    println(ExprParser.from_str("(print 42)").right.map(eng.evaluate(_)).joinRight)
+    // println(ExprParser.from_str("42").right.map(eng.evaluate(_)).joinRight)
+    // println(ExprParser.from_str("(print 42)").right.map(eng.evaluate(_)).joinRight)
+    println(ExprParser.from_file("../examples/example_sum.ore").right.map(eng.evaluate(_)).joinRight)
   }
 }
