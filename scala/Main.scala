@@ -50,6 +50,22 @@ class Engine {
   var variables = HashMap[String, Expr]()
   var operators = HashMap[String, (Seq[Expr] => Either[String, Expr])]()
 
+  def evaluate(expr: Expr): Either[String, Expr] = {
+    expr match {
+      case Bool(_) | Number(_) => Right(expr)
+      case Symbol(s) => variables.get(s) match {
+        case Some(e) => Right(e)
+        case None => Left(s"undefined symbol: `${s}`")
+      }
+      case List(Symbol(op) +: args) => operators.get(op) match {
+        case Some(op) => op(args)
+        case None => Left(s"undefined operator: `${op}`")
+      }
+    }
+  }
+}
+
+class OrelangEngine extends Engine {
   operators.put("step", expr => {
     expr.map(e => evaluate(e))
         .fold(Right(Nil))((acc, e) => acc match {
@@ -123,20 +139,6 @@ class Engine {
     println("[print] ", evaluate(expr.head))
     Right(expr.head)
   })
-
-  def evaluate(expr: Expr): Either[String, Expr] = {
-    expr match {
-      case Bool(_) | Number(_) => Right(expr)
-      case Symbol(s) => variables.get(s) match {
-        case Some(e) => Right(e)
-        case None => Left(s"undefined symbol: `${s}`")
-      }
-      case List(Symbol(op) +: args) => operators.get(op) match {
-        case Some(op) => op(args)
-        case None => Left(s"undefined operator: `${op}`")
-      }
-    }
-  }
 }
 
 object Main {
@@ -147,7 +149,7 @@ object Main {
     // println(ExprParser.from_str("(+ 1 (+ sum -1))"))
     // println(ExprParser.from_file("../examples/example_sum.ore"))
 
-    val eng = new Engine()
+    val eng = new OrelangEngine()
     // println(ExprParser.from_str("42").right.map(eng.evaluate(_)).joinRight)
     // println(ExprParser.from_str("(print 42)").right.map(eng.evaluate(_)).joinRight)
     println(ExprParser.from_file("../examples/example_sum.ore").right.map(eng.evaluate(_)).joinRight)
