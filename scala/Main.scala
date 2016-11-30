@@ -85,7 +85,12 @@ class Engine {
 
   operators.put("set", expr => {
     expr match {
-      case Symbol(sym) +: e +: _ => { variables.put(sym, e); Right(Nil) }
+      case Symbol(sym) +: e +: _ => {
+        evaluate(e) match {
+          case Right(e) => { variables.put(sym, e); Right(Nil) }
+          case Left(err) => Left(err)
+        }
+      }
       case _ => Left("[set] invalid arguments")
     }
   })
@@ -95,7 +100,7 @@ class Engine {
       case e1 +: e2 +: _ => {
         (evaluate(e1), evaluate(e2)) match {
           case (Right(Number(v1)), Right(Number(v2))) => Right(Bool(v1 == v2))
-          case _ => Left("cannot substitute")
+          case _ => Left("[=] cannot substitute")
         }
       }
       case _ => Left("invalid arguments")
@@ -107,7 +112,7 @@ class Engine {
       case e1 +: e2 +: _ => {
         (evaluate(e1), evaluate(e2)) match {
           case (Right(Number(v1)), Right(Number(v2))) => Right(Number(v1 + v2))
-          case _ => Left("cannot substitute")
+          case _ => Left("[+] cannot substitute")
         }
       }
       case _ => Left("invalid arguments")
@@ -115,7 +120,7 @@ class Engine {
   })
 
   operators.put("print", expr => {
-    println("[print] ", expr)
+    println("[print] ", evaluate(expr.head))
     Right(expr.head)
   })
 
