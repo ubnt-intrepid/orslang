@@ -11,7 +11,7 @@ let load_file filename =
 let test_str s =
   match Orelang.parse_from_str s with
   | Some result ->
-    Printf.printf "%s\n" (Orelang.show_expr result) |> ignore
+    Printf.printf "%s\n" (Orelang.show_expression result) |> ignore
   | None -> ()
 
 let test_file filename =

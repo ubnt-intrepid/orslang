@@ -2,61 +2,57 @@
 
 open Angstrom
 
-type expr =
+type expression =
   | Nil
-  | Bool of bool
+  | Boolean of bool
   | Number of int
   | Symbol of string
-  | Function of { name: string; args: expr list; }
+  | List of expression list
 [@@deriving show]
 
 
-let spaces = skip_while (function
+let (>>%) x y = x *> return y
+
+let between p1 p2 p = p1 *> p <* p
+
+let space = skip (function
     | ' ' | '\n' | '\t' -> true
     | _ -> false)
 
-let lparen = string "("
-let rparen = string ")"
+let ws = skip_many space
 
-let ws = spaces
+let ws1 = skip_many1 space
 
-let _symbol = take_while1 (function
-    | 'a'..'z' | 'A'..'Z' | '0'..'9'
-    | '+' | '-' | '*' | '/' | '=' -> true
+
+let brackets = between (string "(") (string ")")
+
+let nil = string "nil" >>% Nil
+
+let boolean = (string "true" >>% Boolean true) <|>
+              (string "false" >>% Boolean false)
+
+let sign = string "+" <|> string "-"
+
+let digits = take_while1 (function
+    | '0'..'9' -> true
     | _ -> false)
 
+let number =
+  lift2 (fun a b -> a ^ b) sign digits <|> digits
+  >>| fun s -> Number(int_of_string s)
 
-let nil =
-  string "nil" *> return Nil
+let symbol = take_while1 (function
+    | 'a'..'z' | 'A'..'Z' | '0'..'9' -> true
+    | '+' | '-' | '*' | '/' | '!' | '=' | '_' -> true
+    | _ -> false) >>| (fun s -> Symbol s)
 
-let boolean =
-  string "true" *> return (Bool true)
-  <|>
-  string "false" *> return (Bool false)
+let list expr =
+  brackets (ws *> sep_by ws1 expr <* ws) >>| (fun l -> List(l))
 
-let number = _symbol
-  >>= (fun s ->
-      try return (Number (int_of_string s))
-      with | _ -> fail "number")
+let expression = fix (fun expr ->
+    boolean <|> number <|> symbol <|> list expr)
 
-let symbol =
-  _symbol >>| fun s -> Symbol s
-
-let _function expr =
-  let _function s a = Function { name = s;
-                                 args = a; } in
-  lparen *> ws *> lift2 _function (_symbol <* ws) (sep_by ws expr) <* rparen
-
-let expr = fix (fun expr ->
-    ws *> (
-      nil
-      <|> boolean
-      <|> number
-      <|> symbol
-      <|> _function expr
-    ) <* ws)
-
-let parse_from_str s : expr option =
-  match parse_only expr (`String s) with
+let parse_from_str s : expression option =
+  match parse_only expression (`String s) with
   | Result.Ok v -> Some v
   | Result.Error msg  -> failwith msg

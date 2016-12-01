@@ -1,11 +1,11 @@
 (* orelang.mli *)
 
-type expr =
+type expression =
   | Nil
-  | Bool of bool
+  | Boolean of bool
   | Number of int
   | Symbol of string
-  | Function of { name: string; args: expr list; }
+  | List of expression list
 [@@deriving show]
 
-val parse_from_str: string -> expr option
+val parse_from_str: string -> expression option
