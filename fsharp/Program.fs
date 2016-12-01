@@ -60,8 +60,11 @@ type engine() =
     let variables = Dictionary<string, expression>()
     let operators = Dictionary<string, operator>()
 
-    member this.Variables = variables
-    member this.Operators = operators
+    member this.def_operator name op =
+        operators.Add(name, operator(op))
+
+    member this.put_variable name expr =
+        variables.Add(name, expr)
 
     member this.Evaluate =
         function
@@ -80,16 +83,16 @@ type engine() =
             | _ -> Failure(sprintf "undefined operator: `%s`" op)
         | List lst -> Failure(sprintf "invalid argument: `%A`" lst)
 
-type orelangEngine() as this =
+type OrelangEngine() as this =
     inherit engine()
     with
-        do this.Operators.Add("+", fun args ->
-                                   match args with
-                                   | e1::e2::_ ->
-                                     match (this.Evaluate(e1), this.Evaluate(e2)) with
-                                     | (Success(Number v1), Success(Number v2)) -> Success(Number(v1 + v2))
-                                     | _ -> Failure("[+] cannot substitute")
-                                   | _ -> Failure("not implemented"))
+        do this.def_operator "+" <|
+            function
+            | e1::e2::_ ->
+                match (this.Evaluate(e1), this.Evaluate(e2)) with
+                | (Success(Number v1), Success(Number v2)) -> Success(Number(v1 + v2))
+                | _ -> Failure("[+] cannot substitute")
+            | _ -> Failure("invalid argument")
 
 [<EntryPoint>]
 let main _ =
@@ -104,6 +107,6 @@ let main _ =
     // printfn "%A" <| Parser.FromString "(10a)"
     // printfn "%A" <| Parser.FromString "a b c"
 
-    let eng = orelangEngine()
+    let eng = OrelangEngine()
     Parser.FromString "(+ 1 2)" |> Result.bind eng.Evaluate |> printfn "%A"
     0
