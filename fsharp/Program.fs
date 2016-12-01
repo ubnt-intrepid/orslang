@@ -18,12 +18,30 @@ module Result =
         | Success s -> f s
         | Failure e -> Failure e
 
+    let ok_or f x =
+        match x with
+        | Some x -> Success x
+        | None -> Failure f
+
+
+type EitherBuilder() =
+    member this.Bind(x, f) = Result.bind f x
+    member this.Return(x) = Success x
+
+let either = new EitherBuilder()
+
 
 type expression = Nil
                 | Boolean of bool
                 | Number of int
                 | Symbol of string
                 | List of expression list
+
+module Expression =
+    let ToNumber e =
+        match e with
+        | Number n -> Some n
+        | _ -> None
 
 
 module Parser =
@@ -76,11 +94,11 @@ type engine() =
             | (true, v) -> Success(v)
             | _ -> Failure(sprintf "undefined symbol: `%s`" s)
 
-        | List [] -> Failure("need one or more elements in the list")
         | List(Symbol(op) :: args) ->
             match operators.TryGetValue(op) with
             | (true, op) -> op.Invoke(args)
             | _ -> Failure(sprintf "undefined operator: `%s`" op)
+
         | List lst -> Failure(sprintf "invalid argument: `%A`" lst)
 
 type OrelangEngine() as this =
@@ -88,10 +106,20 @@ type OrelangEngine() as this =
     with
         do this.def_operator "+" <|
             function
-            | e1::e2::_ ->
-                match (this.Evaluate(e1), this.Evaluate(e2)) with
-                | (Success(Number v1), Success(Number v2)) -> Success(Number(v1 + v2))
-                | _ -> Failure("[+] cannot substitute")
+            | e1::e2::_ -> either {
+                let! v1 = this.Evaluate(e1) |> Result.bind (Expression.ToNumber >> Result.ok_or "failed to substitute e1")
+                let! v2 = this.Evaluate(e2) |> Result.bind (Expression.ToNumber >> Result.ok_or "failed to substitute e2")
+                return Number (v1 + v2)
+              }
+            | _ -> Failure("invalid argument")
+
+        do this.def_operator "=" <|
+            function
+            | e1::e2::_ -> either {
+                let! v1 = this.Evaluate(e1) |> Result.bind (Expression.ToNumber >> Result.ok_or "failed to substitute e1")
+                let! v2 = this.Evaluate(e2) |> Result.bind (Expression.ToNumber >> Result.ok_or "failed to substitute e2")
+                return Boolean (v1 = v2)
+              }
             | _ -> Failure("invalid argument")
 
 [<EntryPoint>]
