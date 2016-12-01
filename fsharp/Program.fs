@@ -59,18 +59,20 @@ type engine() =
     let variables = Dictionary<string, expression>()
     let operators = Dictionary<string, operator>()
 
-    member this.Evaluate = function
-    | Boolean(b) -> Success(Boolean(b))
-    | Number(n) -> Success(Number(n))
-    | Symbol(s) ->
-        match variables.TryGetValue(s) with
-        | (true, v) -> Success(v)
-        | _ -> Failure(sprintf "undefined symbol: `%s`" s)
+    member this.Evaluate =
+        function
+        | Nil -> Success(Nil)
+        | Boolean(b) -> Success(Boolean(b))
+        | Number(n) -> Success(Number(n))
+        | Symbol(s) ->
+            match variables.TryGetValue(s) with
+            | (true, v) -> Success(v)
+            | _ -> Failure(sprintf "undefined symbol: `%s`" s)
 
-    | List(Symbol(op) :: args) ->
-        match operators.TryGetValue(op) with
-        | (true, op) -> op.Invoke(args)
-        | _ -> Failure(sprintf "undefined operator: `%s`" op)
+        | List(Symbol(op) :: args) ->
+            match operators.TryGetValue(op) with
+            | (true, op) -> op.Invoke(args)
+            | _ -> Failure(sprintf "undefined operator: `%s`" op)
 
 
 [<EntryPoint>]
