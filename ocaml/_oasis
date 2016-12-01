@@ -1,12 +1,15 @@
-OASISFormat: 0.4
-Name:        orelang
-Version:     0.0.1
-Synopsis:    Orelang
-Authors:     Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>
-License:     MIT
-BuildTools:  ocamlbuild
+OASISFormat:  0.4
+OCamlVersion: >= 4.02.3
+Name:         orelang
+Version:      0.0.1
+Synopsis:     Orelang
+Authors:      Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>
+License:      MIT
+Plugins:      META (0.4), DevFiles (0.4)
+BuildTools:   ocamlbuild
 
 Executable "orelang"
-  Path:         src
-  MainIs:       main.ml
-  BuildDepends: angstrom, ppx_deriving, ppx_deriving.show
+  Path:           src
+  MainIs:         main.ml
+  CompiledObject: native
+  BuildDepends:   angstrom, ppx_deriving, ppx_deriving.show

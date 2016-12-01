@@ -19,5 +19,8 @@ _build/
 setup.data
 setup.log
 
+_tags
+configure
+Makefile
 setup.ml
 myocamlbuild.ml
