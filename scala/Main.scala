@@ -1,6 +1,5 @@
 import scala.collection.mutable.HashMap
 import scala.io.Source
-import scala.util.control.Breaks
 import scala.util.parsing.combinator._
 
 sealed abstract trait Expr
@@ -47,7 +46,6 @@ object ExprParser extends RegexParsers {
 }
 
 // base class to represent a engine.
-// TODO: hide all properties from derived classes
 class Engine {
   private val variables = HashMap[String, Expr]()
   private val operators = HashMap[String, (Seq[Expr] => Either[String, Expr])]()
@@ -77,35 +75,27 @@ class OrelangEngine extends Engine {
           .fold(Right(Nil))((acc, e) => acc.map(_ => e).joinRight)
   }
 
+  def eval_until(pred: Expr, expr: Seq[Expr], res: Expr) : Either[String,Expr] =
+    evaluate(pred).right.map({
+        case Bool(true) => Right(res)
+        case _ =>
+          expr.map(e => evaluate(e))
+              .fold(Right(Nil))((acc, e) => acc.map(_ => e).joinRight)
+              .right.map(res => eval_until(pred, expr, res)).joinRight
+      }).joinRight
+
   def_operator("until") {
-    case pred +: expr => {
-      var res: Either[String,Expr] = Right(Nil)
-      val b = new Breaks
-      b.breakable {
-        while (true) {
-          res = evaluate(pred)
-          res match {
-            case Right(Bool(true)) => b.break
-            case Right(_) => {
-              res = expr.map(e => evaluate(e))
-                        .fold(Right(Nil))((acc, e) => acc.map(_ => e).joinRight)
-              if (res.isLeft) {
-                b.break
-              }
-            }
-            case Left(e) => { b.break }
-          }
-        }
-      }
-      res
-    }
-    case _ => Left("invalid arguments")
+    case pred +: expr =>
+      eval_until(pred, expr, Nil)
+
+    case _ =>
+      Left("invalid arguments")
   }
 
   def_operator("set") {
-    case Symbol(sym) +: e +: _ => {
+    case Symbol(sym) +: e +: _ =>
       evaluate(e).right.map(e => { put_variable(sym, e); Nil })
-    }
+
     case _ => Left("[set] invalid arguments")
   }
 
