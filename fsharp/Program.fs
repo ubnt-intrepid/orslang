@@ -40,7 +40,7 @@ module Parser =
     let symbol = regex @"[a-zA-Z\+\-\*\/!_][a-zA-Z0-9\+\-\*\/!_]*" |>> Symbol
 
     let list expr =
-        brackets <| spaces >>. sepEndBy expr spaces1 .>> spaces |>> List
+        brackets <| (spaces >>. sepEndBy expr spaces1 .>> spaces |>> List)
 
     let expression = fix <| fun expr ->
         boolean <|> number <|> symbol <|> list expr
@@ -56,10 +56,21 @@ module Parser =
 type operator = delegate of expression list -> result<expression, string>
 
 type engine() =
-    let ops = Dictionary<string, operator>()
-    let vars = Dictionary<string, expression>()
+    let variables = Dictionary<string, expression>()
+    let operators = Dictionary<string, operator>()
 
-    member this.Evaluate expr = Failure "not implemented"
+    member this.Evaluate = function
+    | Boolean(b) -> Success(Boolean(b))
+    | Number(n) -> Success(Number(n))
+    | Symbol(s) ->
+        match variables.TryGetValue(s) with
+        | (true, v) -> Success(v)
+        | _ -> Failure(sprintf "undefined symbol: `%s`" s)
+
+    | List(Symbol(op) :: args) ->
+        match operators.TryGetValue(op) with
+        | (true, op) -> op.Invoke(args)
+        | _ -> Failure(sprintf "undefined operator: `%s`" op)
 
 
 [<EntryPoint>]
@@ -76,5 +87,5 @@ let main _ =
     printfn "%A" <| Parser.FromString "a b c"
 
     let eng = engine()
-    Parser.FromString "(+ 1 2)" |> eng.Evaluate |> printfn "%A"
+    Parser.FromString "(+ 1 2)" |> Result.bind eng.Evaluate |> printfn "%A"
     0
