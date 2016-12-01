@@ -19,7 +19,8 @@ module Result =
         | Failure e -> Failure e
 
 
-type expression = Boolean of bool
+type expression = Nil
+                | Boolean of bool
                 | Number of int
                 | Symbol of string
                 | List of expression list
@@ -59,6 +60,9 @@ type engine() =
     let variables = Dictionary<string, expression>()
     let operators = Dictionary<string, operator>()
 
+    member this.Variables = variables
+    member this.Operators = operators
+
     member this.Evaluate =
         function
         | Nil -> Success(Nil)
@@ -69,25 +73,37 @@ type engine() =
             | (true, v) -> Success(v)
             | _ -> Failure(sprintf "undefined symbol: `%s`" s)
 
+        | List [] -> Failure("need one or more elements in the list")
         | List(Symbol(op) :: args) ->
             match operators.TryGetValue(op) with
             | (true, op) -> op.Invoke(args)
             | _ -> Failure(sprintf "undefined operator: `%s`" op)
+        | List lst -> Failure(sprintf "invalid argument: `%A`" lst)
 
+type orelangEngine() as this =
+    inherit engine()
+    with
+        do this.Operators.Add("+", fun args ->
+                                   match args with
+                                   | e1::e2::_ ->
+                                     match (this.Evaluate(e1), this.Evaluate(e2)) with
+                                     | (Success(Number v1), Success(Number v2)) -> Success(Number(v1 + v2))
+                                     | _ -> Failure("[+] cannot substitute")
+                                   | _ -> Failure("not implemented"))
 
 [<EntryPoint>]
 let main _ =
-    printfn "%A" <| Parser.FromString "hoge"
-    printfn "%A" <| Parser.FromString "10"
-    printfn "%A" <| Parser.FromString "-10"
-    printfn "%A" <| Parser.FromString "false"
-    printfn "%A" <| Parser.FromString "(a b c + - * / _ !)"
-    printfn "%A" <| Parser.FromString "(abc/def a10 (2 3 hoge))"
-    printfn "%A" <| Parser.FromString "( 10 fa1   \n 10  )"
+    // printfn "%A" <| Parser.FromString "hoge"
+    // printfn "%A" <| Parser.FromString "10"
+    // printfn "%A" <| Parser.FromString "-10"
+    // printfn "%A" <| Parser.FromString "false"
+    // printfn "%A" <| Parser.FromString "(a b c + - * / _ !)"
+    // printfn "%A" <| Parser.FromString "(abc/def a10 (2 3 hoge))"
+    // printfn "%A" <| Parser.FromString "( 10 fa1   \n 10  )"
 
-    printfn "%A" <| Parser.FromString "(10a)"
-    printfn "%A" <| Parser.FromString "a b c"
+    // printfn "%A" <| Parser.FromString "(10a)"
+    // printfn "%A" <| Parser.FromString "a b c"
 
-    let eng = engine()
+    let eng = orelangEngine()
     Parser.FromString "(+ 1 2)" |> Result.bind eng.Evaluate |> printfn "%A"
     0
