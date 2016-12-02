@@ -56,7 +56,7 @@ module Parser =
 
     let number = regex @"[\+\-]?\d+" |>> (Int32.Parse >> Number)
 
-    let symbol = regex @"[a-zA-Z\+\-\*\/!_][a-zA-Z0-9\+\-\*\/!_]*" |>> Symbol
+    let symbol = regex @"[a-zA-Z\+\-\*\/!_=][a-zA-Z0-9\+\-\*\/!_=]*" |>> Symbol
 
     let list expr =
         brackets <| (spaces >>. sepEndBy expr spaces1 .>> spaces |>> List)
@@ -71,6 +71,9 @@ module Parser =
         | ParserResult.Success (res, _, _) -> result.Success res
         | ParserResult.Failure (msg, _, _) -> result.Failure msg
 
+    let FromFile (path:string) =
+        try FromString (System.IO.File.ReadAllText path)
+        with | :? System.IO.IOException as ex -> result.Failure (ex.Message)
 
 type operator = delegate of expression list -> result<expression, string>
 
@@ -82,6 +85,8 @@ type engine() =
         operators.Add(name, operator(op))
 
     member this.put_variable name expr =
+        if variables.ContainsKey name then
+            variables.Remove name |> ignore
         variables.Add(name, expr)
 
     member this.Evaluate =
@@ -104,6 +109,17 @@ type engine() =
 type OrelangEngine() as this =
     inherit engine()
     with
+        let rec eval_until pred expr res =
+            pred
+            |> this.Evaluate
+            |> Result.bind (function
+                            | Boolean(true) -> Success(res)
+                            | _ ->
+                                expr
+                                |> List.map this.Evaluate
+                                |> List.fold (fun acc e  -> acc |> Result.bind (fun _ -> e)) (Success(Nil))
+                                |> Result.bind (fun res -> eval_until pred expr res))
+
         do this.def_operator "+" <|
             function
             | e1::e2::_ -> either {
@@ -122,6 +138,28 @@ type OrelangEngine() as this =
               }
             | _ -> Failure("invalid argument")
 
+        do this.def_operator "step" <|
+            fun expr ->
+                expr
+                |> List.map (this.Evaluate)
+                |> List.fold (fun acc e -> acc |> Result.bind (fun _ -> e)) (Success Nil)
+
+        do this.def_operator "set" <|
+            function
+            | Symbol(sym) :: e :: _ ->
+                e |> this.Evaluate |> Result.map (fun e -> this.put_variable sym e; Nil)
+            | _ -> Failure ("[set] invalid arguments")
+
+        do this.def_operator "until" <|
+            function
+            | pred :: expr -> eval_until pred expr Nil
+            | _ -> Failure("invalid arguments")
+
+        do this.def_operator "print" <|
+            function
+            | hd :: _ -> printfn "[print] %A" (this.Evaluate hd); Success(Nil)
+            | _ -> Success(Nil)
+
 [<EntryPoint>]
 let main _ =
     // printfn "%A" <| Parser.FromString "hoge"
@@ -136,5 +174,5 @@ let main _ =
     // printfn "%A" <| Parser.FromString "a b c"
 
     let eng = OrelangEngine()
-    Parser.FromString "(+ 1 2)" |> Result.bind eng.Evaluate |> printfn "%A"
+    Parser.FromFile "../examples/example_sum.ore" |> Result.bind eng.Evaluate |> printfn "%A"
     0
